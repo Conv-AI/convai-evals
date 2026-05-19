@@ -45,7 +45,7 @@ events.onMessage(async (raw: unknown) => {
   }
   if (msg.type !== "start_session") return;
   try {
-    const sdk = new SdkBridge(msg.config, sessionId);
+    const sdk = new SdkBridge(msg.config, sessionId, msg.run_id);
     activeSdk = sdk;
     await sdk.connect();
     // Push backend identifiers up to the orchestrator before bot_ready so all observations
@@ -72,6 +72,7 @@ events.onMessage(async (raw: unknown) => {
       sdk,
       events,
       sessionId,
+      runId: msg.run_id,
     });
     activeScheduler = scheduler;
     await scheduler.preloadVoiceBuffers();

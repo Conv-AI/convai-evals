@@ -71,6 +71,13 @@ export function ReportView({ report }: Props): JSX.Element {
         Structure pass rate:{" "}
         <strong>{(report.summary.structure_pass_rate_overall * 100).toFixed(1)}%</strong>
       </p>
+      {report.summary.telemetry_id_coverage && (
+        <p className="muted small">
+          telemetry IDs: {report.summary.telemetry_id_coverage.rows_with_client_event_id} client events ·{" "}
+          {report.summary.telemetry_id_coverage.unique_character_session_ids} character sessions ·{" "}
+          {report.summary.telemetry_id_coverage.unique_turn_ids} turn traces
+        </p>
+      )}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {([
           "pass",
@@ -283,6 +290,26 @@ function RowDetailPanel({ row }: { row: PerRowResult }): JSX.Element {
           <IdCell label="character_id" value={row.backend?.character_id} />
         </div>
       </div>
+
+      {row.correlation && (
+        <div className="row-detail-section">
+          <h4>Correlation</h4>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8, fontSize: 12 }}>
+            <IdCell label="client_event_id" value={row.correlation.client_event_id} />
+            <IdCell label="dispatch_time" value={row.correlation.dispatch_epoch_ms ? new Date(row.correlation.dispatch_epoch_ms).toISOString() : undefined} />
+            <IdCell label="response_attribution" value={row.correlation.attribution.response} />
+            <IdCell label="transcript_attribution" value={row.correlation.attribution.transcript} />
+            <IdCell
+              label="outbound_metadata"
+              value={row.correlation.outbound_metadata
+                ? row.correlation.outbound_metadata.injected
+                  ? `injected:${row.correlation.outbound_metadata.message_type ?? "unknown"}`
+                  : "not_injected"
+                : undefined}
+            />
+          </div>
+        </div>
+      )}
 
       {row.diagnostics && (
         <div className="row-detail-section">

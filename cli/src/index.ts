@@ -20,6 +20,7 @@ type Command =
   | "convert"
   | "run"
   | "report"
+  | "telemetry-ids"
   | "explain"
   | "generate-template"
   | "help"
@@ -42,6 +43,9 @@ try {
       break;
     case "report":
       await reportCommand(args);
+      break;
+    case "telemetry-ids":
+      await telemetryIdsCommand(args);
       break;
     case "explain":
       await explainCommand(args);
@@ -133,6 +137,59 @@ async function reportCommand(files: string[]): Promise<void> {
   if (report?.summary?.structure_pass_rate_overall != null) {
     console.log(`structure_pass_rate: ${(report.summary.structure_pass_rate_overall * 100).toFixed(1)}%`);
   }
+  const coverage = report?.summary?.telemetry_id_coverage;
+  if (coverage) {
+    console.log(`client_event_ids: ${coverage.rows_with_client_event_id}/${rows.length}`);
+    console.log(`character_session_ids: ${coverage.unique_character_session_ids}`);
+    console.log(`backend_session_ids: ${coverage.unique_backend_session_ids}`);
+    console.log(`turn_ids: ${coverage.unique_turn_ids}`);
+  }
+}
+
+async function telemetryIdsCommand(rawArgs: string[]): Promise<void> {
+  const { positional, options } = parseArgs(rawArgs);
+  const reportPath = positional[0];
+  if (!reportPath) throw new Error("usage: convai-evals telemetry-ids <report.json> [--out ids.json]");
+  const report = await readJson(reportPath);
+  const rows = Array.isArray(report?.per_row) ? report.per_row : [];
+  const dispatchEpochs = rows
+    .map((row: any) => row?.correlation?.dispatch_epoch_ms)
+    .filter((value: any): value is number => typeof value === "number");
+  const payload = {
+    run_id: report?.run_metadata?.run_id,
+    endpoint: report?.run_metadata?.endpoint,
+    endpointUrl: report?.run_metadata?.endpointUrl,
+    characterId: report?.run_metadata?.characterId,
+    time_window: dispatchEpochs.length
+      ? {
+          start: new Date(Math.min(...dispatchEpochs)).toISOString(),
+          end: new Date(Math.max(...dispatchEpochs)).toISOString(),
+        }
+      : undefined,
+    coverage: report?.summary?.telemetry_id_coverage,
+    backend: {
+      session_ids: unique(rows.map((row: any) => row?.backend?.session_id)),
+      character_session_ids: unique(rows.map((row: any) => row?.backend?.character_session_id)),
+      turn_ids: unique(rows.map((row: any) => row?.backend?.turn_id)),
+    },
+    rows: rows.map((row: any) => ({
+      test_id: row?.test_id,
+      session_id: row?.session_id,
+      sequence_index: row?.sequence_index,
+      input_kind: row?.input_kind,
+      client_event_id: row?.correlation?.client_event_id,
+      dispatch_epoch_ms: row?.correlation?.dispatch_epoch_ms,
+      backend: row?.backend,
+      failure_reason: row?.failure_reason,
+    })),
+  };
+  const out = options.get("out");
+  if (out) {
+    await fs.writeFile(out, `${JSON.stringify(payload, null, 2)}\n`);
+    console.log(`wrote telemetry ids for ${rows.length} rows to ${out}`);
+  } else {
+    console.log(JSON.stringify(payload, null, 2));
+  }
 }
 
 async function generateTemplateCommand(rawArgs: string[]): Promise<void> {
@@ -160,6 +217,7 @@ Commands:
                                                Convert legacy RTVI table CSV to scenario JSON.
   run <scenario.json> [--out rows.json]         Validate and emit runtime rows for the browser runner.
   report <report.json>                         Summarize a machine-readable report.
+  telemetry-ids <report.json> [--out ids.json] Extract backend IDs and event windows for analytics lookups.
   explain <scenario.json>                      Print an agent-readable scenario summary.
   generate-template --kind <name> [--out file] Copy a synthetic scenario template.
 `);
@@ -340,6 +398,10 @@ function splitList(value: string | undefined): string[] | undefined {
   if (!value) return undefined;
   const items = value.split(/[;,]/).map((item) => item.trim()).filter(Boolean);
   return items.length ? items : undefined;
+}
+
+function unique(values: unknown[]): string[] {
+  return Array.from(new Set(values.filter((value): value is string => typeof value === "string" && value.length > 0))).sort();
 }
 
 function parseBool(value: string | undefined): boolean {

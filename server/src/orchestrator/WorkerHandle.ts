@@ -99,6 +99,7 @@ export class WorkerHandle {
     this.workerWs = ws;
     const startMsg: WsOrchestratorToWorker = {
       type: "start_session",
+      run_id: this.opts.runId,
       session_id: this.sessionId,
       config: this.opts.config,
       rows: this.opts.rows,
@@ -296,6 +297,21 @@ function applyEventToObservation(obs: RowObservation, ev: CapturedEvent): void {
       // Synthetic event emitted when a run_llm=true context update preempts a pending
       // response. This is spec-correct and should not be classified as a timeout.
       obs.interrupted_by_priority_event = true;
+      if (obs.correlation) obs.correlation.attribution.response = "priority_preemption";
       break;
+    case "correlation_marker": {
+      obs.correlation = ev.data as RowObservation["correlation"];
+      break;
+    }
+    case "outbound_metadata_injected": {
+      if (obs.correlation) {
+        const data = ev.data as { message_type?: string } | undefined;
+        obs.correlation.outbound_metadata = {
+          injected: true,
+          message_type: data?.message_type,
+        };
+      }
+      break;
+    }
   }
 }

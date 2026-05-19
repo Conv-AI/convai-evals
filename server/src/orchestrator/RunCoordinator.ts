@@ -11,6 +11,7 @@ import type {
   RowObservation,
   RunConfig,
   RunRequest,
+  TelemetryIdCoverage,
   TestRow,
   WsServerToClient,
 } from "@convai/evals-shared";
@@ -166,7 +167,7 @@ export class RunCoordinator {
       ? rows.filter((row) => obsById.get(row.test_id)?.timestamps.t_input_start != null)
       : rows;
     const perRow: PerRowResult[] = reportRows.map((row) =>
-      buildPerRow(row, obsById.get(row.test_id), req.config),
+      buildPerRow(row, obsById.get(row.test_id), req.config, runId),
     );
 
     // 5) Optional judge phase — skip when canceled to avoid LLM spend on a partial dataset.
@@ -222,7 +223,7 @@ function defaultSessionTimeoutMs(rows: TestRow[]): number {
   return Math.ceil(span * 1.3) + 60_000;
 }
 
-function buildPerRow(row: TestRow, obs: RowObservation | undefined, config: RunConfig): PerRowResult {
+function buildPerRow(row: TestRow, obs: RowObservation | undefined, config: RunConfig, runId: string): PerRowResult {
   const fallbackObs: RowObservation = obs ?? {
     test_id: row.test_id,
     session_id: row.session_id,
@@ -232,6 +233,20 @@ function buildPerRow(row: TestRow, obs: RowObservation | undefined, config: RunC
     events: [],
     llm_called: false,
     bot_spoke: false,
+    correlation: {
+      eval_run_id: runId,
+      eval_session_id: row.session_id,
+      row_id: row.test_id,
+      client_event_id: `${runId}:${row.session_id}:${row.sequence_index}:${row.test_id}`,
+      sequence_index: row.sequence_index,
+      input_kind: row.input_kind,
+      outbound_metadata: { injected: false },
+      attribution: {
+        input: row.input_kind === "Voice In" ? "voice_owner" : "direct_row",
+        response: "timeout_or_missing",
+        transcript: "none",
+      },
+    },
   };
   const structure_match = checkStructure(row, fallbackObs);
   const latency = computeLatency(fallbackObs.timestamps);
@@ -263,6 +278,7 @@ function buildPerRow(row: TestRow, obs: RowObservation | undefined, config: RunC
     sla_pass: null,
     judge: null,
     backend: fallbackObs.backend ? { ...fallbackObs.backend } : undefined,
+    correlation: fallbackObs.correlation ? { ...fallbackObs.correlation } : undefined,
     turn_trace: fallbackObs.turn_trace,
     server_e2e_ms: fallbackObs.turn_trace?.e2e_ms,
     was_canceled: fallbackObs.was_canceled,
@@ -272,6 +288,16 @@ function buildPerRow(row: TestRow, obs: RowObservation | undefined, config: RunC
   };
   partial.sla_pass = rowSlaPass(partial, config.slaVoiceAnimMs, config.slaTextOutMs);
   partial.failure_reason = classifyFailure(row, fallbackObs, structure_match, partial.sla_pass);
+  if (partial.correlation) {
+    if (partial.failure_reason === "timeout" || partial.failure_reason === "connection_error") {
+      partial.correlation.attribution.response = "timeout_or_missing";
+    } else if (partial.interrupted_by_priority_event) {
+      partial.correlation.attribution.response = "priority_preemption";
+    }
+    if (!partial.observed.bot_transcript && !partial.observed.user_transcript) {
+      partial.correlation.attribution.transcript = "none";
+    }
+  }
   return partial;
 }
 
@@ -335,6 +361,7 @@ function assembleReport(
     : null;
 
   const per_bucket = buildBucketSummaries(perRow);
+  const telemetryIdCoverage = buildTelemetryIdCoverage(perRow);
 
   return {
     run_metadata: {
@@ -360,10 +387,47 @@ function assembleReport(
       structure_pass_rate_overall: perRow.length === 0 ? 0 : overall_passed / perRow.length,
       structure_pass_by_bucket: byBucket,
       latency_by_io_type: latencyByIo,
+      telemetry_id_coverage: telemetryIdCoverage,
       judge_mean_scores: judgeMean,
     },
     per_bucket,
     per_row: perRow,
+  };
+}
+
+function buildTelemetryIdCoverage(rows: PerRowResult[]): TelemetryIdCoverage {
+  const backendSessionIds = new Set<string>();
+  const characterSessionIds = new Set<string>();
+  const turnIds = new Set<string>();
+  let rowsWithClientEventId = 0;
+  let rowsWithBackendSessionId = 0;
+  let rowsWithCharacterSessionId = 0;
+  let rowsWithTurnId = 0;
+
+  for (const row of rows) {
+    if (row.correlation?.client_event_id) rowsWithClientEventId += 1;
+    if (row.backend?.session_id) {
+      rowsWithBackendSessionId += 1;
+      backendSessionIds.add(row.backend.session_id);
+    }
+    if (row.backend?.character_session_id) {
+      rowsWithCharacterSessionId += 1;
+      characterSessionIds.add(row.backend.character_session_id);
+    }
+    if (row.backend?.turn_id) {
+      rowsWithTurnId += 1;
+      turnIds.add(row.backend.turn_id);
+    }
+  }
+
+  return {
+    rows_with_client_event_id: rowsWithClientEventId,
+    rows_with_backend_session_id: rowsWithBackendSessionId,
+    rows_with_character_session_id: rowsWithCharacterSessionId,
+    rows_with_turn_id: rowsWithTurnId,
+    unique_backend_session_ids: backendSessionIds.size,
+    unique_character_session_ids: characterSessionIds.size,
+    unique_turn_ids: turnIds.size,
   };
 }
 

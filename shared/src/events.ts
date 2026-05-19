@@ -38,6 +38,7 @@ export type WsWorkerToOrchestrator =
 export type WsOrchestratorToWorker =
   | {
       type: "start_session";
+      run_id: string;
       session_id: string;
       config: RunConfig;
       rows: TestRow[];

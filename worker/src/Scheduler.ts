@@ -1,4 +1,4 @@
-import type { CapturedEvent, RunConfig, TestRow } from "@convai/evals-shared";
+import type { CapturedEvent, RowCorrelation, RunConfig, TestRow } from "@convai/evals-shared";
 import type { MicSink } from "./MicSink.js";
 import type { SdkBridge } from "./SdkBridge.js";
 import type { EventStream } from "./EventStream.js";
@@ -11,6 +11,7 @@ interface SchedulerDeps {
   sdk: SdkBridge;
   events: EventStream;
   sessionId: string;
+  runId: string;
 }
 
 export class Scheduler {
@@ -104,6 +105,20 @@ export class Scheduler {
       row.input_kind === "Voice In" ||
       row.input_kind === "Text In" ||
       (row.input_kind === "Dynamic Context" && data.run_llm !== "false");
+    const correlation = buildCorrelation({
+      row,
+      runId: this.deps.runId,
+      sessionId: this.deps.sessionId,
+      expectsResponse,
+      dispatchPerfMs: t,
+      dispatchEpochMs: Date.now(),
+    });
+    this.deps.events.send({
+      type: "row_event",
+      session_id: this.deps.sessionId,
+      test_id: row.test_id,
+      event: { name: "correlation_marker", ts: t, data: correlation },
+    });
 
     // Flag Dynamic Context rows that fire while a previous bot turn is still in flight.
     // Captured BEFORE enqueueing this row so the count reflects prior in-flight turns,
@@ -150,13 +165,13 @@ export class Scheduler {
           inputEndTs = performance.now();
         } else {
           const text = data.text ?? row.input_text ?? "";
-          if (text) this.deps.sdk.sendUserText(text);
+          if (text) this.deps.sdk.sendUserText(text, correlation);
           inputEndTs = performance.now();
         }
       } else if (row.input_kind === "Text In") {
         // Send text directly — no TTS, no mic, no STT attribution.
         const text = data.text ?? row.input_text ?? "";
-        if (text) this.deps.sdk.sendUserText(text);
+        if (text) this.deps.sdk.sendUserText(text, correlation);
         inputEndTs = performance.now();
       } else {
         this.deps.sdk.updateContext({
@@ -164,7 +179,7 @@ export class Scheduler {
           mode: data.mode,
           run_llm: data.run_llm,
           current_attention_object: data.current_attention_object,
-        });
+        }, correlation);
         inputEndTs = performance.now();
       }
     } catch (e) {
@@ -174,6 +189,14 @@ export class Scheduler {
     // Synthetic event so the orchestrator can stamp t_input_end. We address this directly
     // to the row's own test_id (bypassing the queue) since it's about the input, not the bot.
     const inputEndEvent: CapturedEvent = { name: "input_end", ts: inputEndTs };
+    correlation.input_end_perf_ms = inputEndTs;
+    correlation.input_end_epoch_ms = Date.now();
+    this.deps.events.send({
+      type: "row_event",
+      session_id: this.deps.sessionId,
+      test_id: row.test_id,
+      event: { name: "correlation_marker", ts: inputEndTs, data: correlation },
+    });
     this.deps.events.send({
       type: "row_event",
       session_id: this.deps.sessionId,
@@ -224,4 +247,31 @@ function safeParsePayload(raw: string): { type?: string; data?: any } | null {
   } catch {
     return null;
   }
+}
+
+function buildCorrelation(opts: {
+  row: TestRow;
+  runId: string;
+  sessionId: string;
+  expectsResponse: boolean;
+  dispatchPerfMs: number;
+  dispatchEpochMs: number;
+}): RowCorrelation {
+  const { row, runId, sessionId, expectsResponse, dispatchPerfMs, dispatchEpochMs } = opts;
+  return {
+    eval_run_id: runId,
+    eval_session_id: sessionId,
+    row_id: row.test_id,
+    client_event_id: `${runId}:${sessionId}:${row.sequence_index}:${row.test_id}`,
+    sequence_index: row.sequence_index,
+    input_kind: row.input_kind,
+    dispatch_perf_ms: dispatchPerfMs,
+    dispatch_epoch_ms: dispatchEpochMs,
+    outbound_metadata: { injected: false },
+    attribution: {
+      input: row.input_kind === "Voice In" ? "voice_owner" : "direct_row",
+      response: expectsResponse ? "response_queue" : "no_response_expected",
+      transcript: expectsResponse ? "sdk_message_id" : "none",
+    },
+  };
 }

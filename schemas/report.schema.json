@@ -23,7 +23,22 @@
     "summary": {
       "type": "object",
       "required": ["structure_pass_rate_overall", "structure_pass_by_bucket", "latency_by_io_type"],
-      "additionalProperties": true
+      "additionalProperties": true,
+      "properties": {
+        "telemetry_id_coverage": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "rows_with_client_event_id": { "type": "number" },
+            "rows_with_backend_session_id": { "type": "number" },
+            "rows_with_character_session_id": { "type": "number" },
+            "rows_with_turn_id": { "type": "number" },
+            "unique_backend_session_ids": { "type": "number" },
+            "unique_character_session_ids": { "type": "number" },
+            "unique_turn_ids": { "type": "number" }
+          }
+        }
+      }
     },
     "per_bucket": {
       "type": "array",
@@ -34,7 +49,21 @@
       "items": {
         "type": "object",
         "required": ["test_id", "session_id", "sequence_index", "input_kind", "expected", "observed", "failure_reason"],
-        "additionalProperties": true
+        "additionalProperties": true,
+        "properties": {
+          "correlation": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "eval_run_id": { "type": "string" },
+              "eval_session_id": { "type": "string" },
+              "row_id": { "type": "string" },
+              "client_event_id": { "type": "string" },
+              "dispatch_epoch_ms": { "type": "number" },
+              "attribution": { "type": "object", "additionalProperties": true }
+            }
+          }
+        }
       }
     }
   }

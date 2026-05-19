@@ -8,4 +8,4 @@ For runtime debugging, use `convai-evals run scenario.json --out rows.json` to i
 
 For latency or behavior regressions, compare two report JSON files by `test_id`, `failure_reason`, `structure_match`, and `latency.end_to_end_ms`. Keep JSON as the source of truth and derive CSV/HTML views after the fact.
 
-For backend investigation, enable `DIAG_PROVIDER=analytics-api` or use backend IDs from the report to call Convai analytics APIs in a separate workflow.
+For backend investigation, enable `DIAG_PROVIDER=analytics-api` or use backend IDs from the report to call Convai analytics APIs in a separate workflow. Use `convai-evals telemetry-ids report.json --out telemetry-ids.json` when an agent needs the row-level `client_event_id`, backend IDs, and dispatch window for a follow-up analytics lookup.

@@ -1,4 +1,4 @@
-import type { CapturedEvent, ContextMode, RunConfig, RunLlm, TurnTrace } from "@convai/evals-shared";
+import type { CapturedEvent, ContextMode, RowCorrelation, RunConfig, RunLlm, TurnTrace } from "@convai/evals-shared";
 import { installTurnTraceTap } from "./turnTracePatch.js";
 import { getCapturedConnectInfo } from "./connectIntercept.js";
 
@@ -88,6 +88,8 @@ export class SdkBridge {
   private listeners: Array<() => void> = [];
   private userInputOwner: string | null = null;
   private pendingResponses: string[] = [];
+  private currentOutboundCorrelation: RowCorrelation | null = null;
+  private botMessageOwners = new Map<string, string>();
   // 1-deep ring of the most recently popped response owner. Lets a turn-trace that arrives
   // just after speakingChange:false still land on the right row.
   private lastBotTurnOwner: string | null = null;
@@ -96,7 +98,7 @@ export class SdkBridge {
   private botReadyFired = false;
   private botReadyWaiters: Array<() => void> = [];
 
-  constructor(private config: RunConfig, private sessionId: string) {}
+  constructor(private config: RunConfig, private sessionId: string, private runId: string) {}
 
   async connect(): Promise<void> {
     const mod: any = await import("@convai/web-sdk");
@@ -143,6 +145,7 @@ export class SdkBridge {
     }
 
     await this.client.connect();
+    this.installPublishDataCorrelation();
 
     // Install the turn-trace tap after connect so client.room is fully wired.
     try {
@@ -250,14 +253,16 @@ export class SdkBridge {
     });
   }
 
-  sendUserText(text: string): void {
-    if (typeof this.client.sendUserTextMessage === "function") {
-      this.client.sendUserTextMessage(text);
-    } else if (typeof this.client.sendText === "function") {
-      this.client.sendText(text);
-    } else {
-      throw new Error("sendUserTextMessage not found on client");
-    }
+  sendUserText(text: string, correlation?: RowCorrelation): void {
+    this.withOutboundCorrelation(correlation, () => {
+      if (typeof this.client.sendUserTextMessage === "function") {
+        this.client.sendUserTextMessage(text);
+      } else if (typeof this.client.sendText === "function") {
+        this.client.sendText(text);
+      } else {
+        throw new Error("sendUserTextMessage not found on client");
+      }
+    });
   }
 
   /**
@@ -271,10 +276,10 @@ export class SdkBridge {
     mode?: ContextMode;
     run_llm?: RunLlm;
     current_attention_object?: string;
-  }): void {
+  }, correlation?: RowCorrelation): void {
     const fn = this.client.updateContext ?? this.client.updateDynamicInfo;
     if (typeof fn !== "function") throw new Error("updateContext not found on client");
-    fn.call(this.client, opts as unknown);
+    this.withOutboundCorrelation(correlation, () => fn.call(this.client, opts as unknown));
   }
 
   async disconnect(): Promise<void> {
@@ -317,7 +322,7 @@ export class SdkBridge {
       const messages: ChatMessage[] = Array.isArray(data) ? (data as ChatMessage[]) : [];
       const lastBot = findLast(messages, (m) => m.type === "bot-llm-text");
       const lastUser = findLast(messages, (m) => m.type === "user-transcription");
-      const botOwner = this.pendingResponses[0] ?? this.lastBotTurnOwner;
+      const botOwner = lastBot ? this.ownerForBotMessage(lastBot) : undefined;
       if (lastBot && botOwner) {
         const t = this.transcripts.get(botOwner);
         if (t) t.bot = lastBot.content;
@@ -337,6 +342,55 @@ export class SdkBridge {
 
     if (!testId) return;
     this.onEvent(testId, { name, ts: performance.now(), data });
+  }
+
+  private ownerForBotMessage(message: ChatMessage): string | undefined {
+    const existing = this.botMessageOwners.get(message.id);
+    if (existing) return existing;
+    const owner = this.pendingResponses[0] ?? this.lastBotTurnOwner ?? undefined;
+    if (owner) this.botMessageOwners.set(message.id, owner);
+    return owner;
+  }
+
+  private withOutboundCorrelation(correlation: RowCorrelation | undefined, fn: () => void): void {
+    const previous = this.currentOutboundCorrelation;
+    this.currentOutboundCorrelation = correlation ?? null;
+    try {
+      fn();
+    } finally {
+      this.currentOutboundCorrelation = previous;
+    }
+  }
+
+  private installPublishDataCorrelation(): void {
+    const participant = this.client?.room?.localParticipant;
+    const publishData = participant?.publishData;
+    if (!participant || typeof publishData !== "function") return;
+
+    const original = publishData.bind(participant);
+    const bridge = this;
+    participant.publishData = function patchedPublishData(data: Uint8Array, options?: unknown) {
+      const correlation = bridge.currentOutboundCorrelation;
+      if (!correlation) return original(data, options);
+
+      const patched = patchOutboundPayload(data, correlation);
+      if (patched) {
+        correlation.outbound_metadata = {
+          injected: true,
+          message_type: patched.messageType,
+        };
+        bridge.onEvent(correlation.row_id, {
+          name: "outbound_metadata_injected",
+          ts: performance.now(),
+          data: { client_event_id: correlation.client_event_id, message_type: patched.messageType },
+        });
+        return original(patched.data, options);
+      }
+      return original(data, options);
+    };
+    this.listeners.push(() => {
+      participant.publishData = original;
+    });
   }
 }
 
@@ -362,4 +416,33 @@ function normalizeUrl(url: string): string {
   if (!url) return url;
   if (/^https?:\/\//i.test(url)) return url;
   return `https://${url}`;
+}
+
+function patchOutboundPayload(
+  data: Uint8Array,
+  correlation: RowCorrelation,
+): { data: Uint8Array; messageType: string } | null {
+  let parsed: any;
+  try {
+    parsed = JSON.parse(new TextDecoder().decode(data));
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object") return null;
+  if (parsed.type !== "user_text_message" && parsed.type !== "context-update") return null;
+  parsed.data = {
+    ...(parsed.data ?? {}),
+    client_event_id: correlation.client_event_id,
+    eval_metadata: {
+      eval_run_id: correlation.eval_run_id,
+      eval_session_id: correlation.eval_session_id,
+      row_id: correlation.row_id,
+      sequence_index: correlation.sequence_index,
+      input_kind: correlation.input_kind,
+    },
+  };
+  return {
+    data: new TextEncoder().encode(JSON.stringify(parsed)),
+    messageType: parsed.type,
+  };
 }

@@ -91,6 +91,8 @@ CONVAI_ANALYTICS_BASE_URL=https://analytics-api.convai.com/v1/analytics
 
 Reports preserve backend IDs when available so a coding agent can call Convai analytics APIs after a run. Direct cloud log access is intentionally outside the public default path.
 
+Each row also carries a `correlation` block with a deterministic `client_event_id`, dispatch timestamps, and the attribution method used for response and transcript capture. Text and dynamic-context rows attempt to pass the same public-safe metadata through the SDK data message so backend telemetry can join back to eval rows when supported.
+
 ## CLI
 
 ```bash
@@ -98,6 +100,7 @@ convai-evals validate examples/scenarios/*.json
 convai-evals convert input.csv --from legacy-rtvi-csv --out scenario.json
 convai-evals run scenario.json --out runtime-rows.json
 convai-evals report report.json
+convai-evals telemetry-ids report.json --out telemetry-ids.json
 convai-evals explain scenario.json
 convai-evals generate-template --kind voice-text-mix --out scenario.json
 ```

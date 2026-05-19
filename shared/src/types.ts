@@ -107,6 +107,28 @@ export interface CapturedEvent {
   data?: unknown;
 }
 
+export interface RowCorrelation {
+  eval_run_id: string;
+  eval_session_id: string;
+  row_id: string;
+  client_event_id: string;
+  sequence_index: number;
+  input_kind: InputKind;
+  dispatch_perf_ms?: number;
+  dispatch_epoch_ms?: number;
+  input_end_perf_ms?: number;
+  input_end_epoch_ms?: number;
+  outbound_metadata?: {
+    injected: boolean;
+    message_type?: string;
+  };
+  attribution: {
+    input: "direct_row" | "voice_owner" | "none";
+    response: "response_queue" | "priority_preemption" | "no_response_expected" | "timeout_or_missing";
+    transcript: "sdk_message_id" | "sdk_message_queue" | "none";
+  };
+}
+
 /**
  * Server-emitted per-turn timeline. Comes from core-service utils/turn_trace.flush_turn() when
  * the bot was constructed with debug=true. See models/rtvi.py:653-745 for the source-of-truth shape.
@@ -151,6 +173,7 @@ export interface RowObservation {
   /** Set when a Dynamic Context row dispatched while a previous bot turn was still
    * in flight. Used by the failure classifier to flag mismatches as "by design". */
   dispatched_mid_turn?: boolean;
+  correlation?: RowCorrelation;
 }
 
 export interface StructureMatch {
@@ -214,6 +237,7 @@ export interface PerRowResult {
     turn_id?: string;
     character_id?: string;
   };
+  correlation?: RowCorrelation;
   turn_trace?: TurnTrace;
   server_e2e_ms?: number;
   was_canceled?: boolean;
@@ -241,6 +265,16 @@ export interface IoLatencyStats {
   sla_pass: boolean | null;
 }
 
+export interface TelemetryIdCoverage {
+  rows_with_client_event_id: number;
+  rows_with_backend_session_id: number;
+  rows_with_character_session_id: number;
+  rows_with_turn_id: number;
+  unique_backend_session_ids: number;
+  unique_character_session_ids: number;
+  unique_turn_ids: number;
+}
+
 export interface ReportPayload {
   run_metadata: {
     run_id: string;
@@ -265,6 +299,7 @@ export interface ReportPayload {
     structure_pass_rate_overall: number;
     structure_pass_by_bucket: Record<string, { total: number; passed: number }>;
     latency_by_io_type: Record<string, IoLatencyStats>;
+    telemetry_id_coverage: TelemetryIdCoverage;
     judge_mean_scores: JudgeScores | null;
   };
   per_bucket: BucketSummary[];
