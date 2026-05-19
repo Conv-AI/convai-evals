@@ -1,0 +1,44 @@
+{
+  "schema_version": "convai-evals/v0",
+  "scenario_id": "lipsync-latency-smoke",
+  "title": "Lipsync latency smoke",
+  "description": "A minimal smoke scenario for bot audio, animation/blendshape events, and first-audio latency.",
+  "tags": ["lipsync", "latency", "smoke"],
+  "sessions": [
+    {
+      "session_id": "lipsync-session-001",
+      "events": [
+        {
+          "event_id": "lip-001-text-to-animated-speech",
+          "at_s": 0,
+          "input": {
+            "kind": "text",
+            "text": "Say one encouraging sentence out loud."
+          },
+          "expect": {
+            "behavior": "respond",
+            "llm_call": true,
+            "verbal_response": true,
+            "latency_sla_ms": 2500,
+            "required_events": ["speakingChange:true", "blendshapes"]
+          }
+        },
+        {
+          "event_id": "lip-002-voice-to-animated-speech",
+          "at_s": 12,
+          "input": {
+            "kind": "voice",
+            "text": "Respond with a short spoken hint."
+          },
+          "expect": {
+            "behavior": "respond",
+            "llm_call": true,
+            "verbal_response": true,
+            "latency_sla_ms": 3500,
+            "required_events": ["speakingChange:true", "blendshapes"]
+          }
+        }
+      ]
+    }
+  ]
+}

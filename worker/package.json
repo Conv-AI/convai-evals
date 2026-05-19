@@ -1,0 +1,19 @@
+{
+  "name": "@convai/evals-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "build:watch": "vite build --watch",
+    "dev": "vite"
+  },
+  "dependencies": {
+    "@convai/evals-shared": "*",
+    "@convai/web-sdk": "^1.3.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "vite": "^8.0.13"
+  }
+}

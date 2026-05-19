@@ -1,0 +1,86 @@
+{
+  "schema_version": "convai-evals/v0",
+  "scenario_id": "dynamic-context-long-session",
+  "title": "Dynamic context long session",
+  "description": "A generic long-running session that checks silent context updates, automatic context decisions, and explicit LLM-triggering updates.",
+  "tags": ["dynamic-context", "long-session", "rtvi-table-v0"],
+  "metadata": {
+    "workload_shape": "stateful game-like session without customer content"
+  },
+  "sessions": [
+    {
+      "session_id": "dynamic-context-session-001",
+      "metadata": {
+        "persona": "returning-user",
+        "surface": "mobile"
+      },
+      "events": [
+        {
+          "event_id": "dc-001-silent-state",
+          "at_s": 0,
+          "input": {
+            "kind": "dynamic_context",
+            "text": "The user has opened a reward screen and has not asked a question yet.",
+            "mode": "replace",
+            "run_llm": "false",
+            "current_attention_object": "reward_screen"
+          },
+          "expect": {
+            "behavior": "no_call",
+            "llm_call": false,
+            "verbal_response": false
+          }
+        },
+        {
+          "event_id": "dc-002-user-question",
+          "at_s": 8,
+          "input": {
+            "kind": "text",
+            "text": "Can you tell me what I should try next?"
+          },
+          "expect": {
+            "behavior": "respond",
+            "llm_call": true,
+            "verbal_response": true,
+            "latency_sla_ms": 1800,
+            "ai_response_example": "The guide should suggest a next action using the current screen context."
+          }
+        },
+        {
+          "event_id": "dc-003-auto-update",
+          "at_s": 35,
+          "input": {
+            "kind": "dynamic_context",
+            "text": "The user navigated to a new challenge screen after completing the suggested action.",
+            "mode": "append",
+            "run_llm": "auto",
+            "current_attention_object": "challenge_screen"
+          },
+          "expect": {
+            "behavior": "abstain",
+            "llm_call": true,
+            "verbal_response": false,
+            "required_events": ["llmNoResponse"]
+          }
+        },
+        {
+          "event_id": "dc-004-explicit-context-response",
+          "at_s": 62,
+          "input": {
+            "kind": "dynamic_context",
+            "text": "The user appears idle on a timed challenge. Offer concise help.",
+            "mode": "append",
+            "run_llm": "true",
+            "current_attention_object": "timed_challenge"
+          },
+          "expect": {
+            "behavior": "respond",
+            "llm_call": true,
+            "verbal_response": true,
+            "latency_sla_ms": 2500
+          }
+        }
+      ]
+    }
+  ]
+}

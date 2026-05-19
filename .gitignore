@@ -1,0 +1,17 @@
+node_modules/
+dist/
+server/src/static/
+/diagnostics/
+server/diagnostics/
+.env
+.env.local
+cache/tts/
+reports/
+report-*.json
+report-*.csv
+rtvi-messages-*.json
+*.log
+.DS_Store
+.vscode/
+.idea/
+.claude/

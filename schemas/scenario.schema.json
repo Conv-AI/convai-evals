@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Conv-AI/convai-evals/schemas/scenario.schema.json",
+  "title": "Convai Evals Scenario",
+  "type": "object",
+  "required": ["schema_version", "scenario_id", "sessions"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "convai-evals/v0" },
+    "scenario_id": { "type": "string", "minLength": 1 },
+    "title": { "type": "string" },
+    "description": { "type": "string" },
+    "tags": { "type": "array", "items": { "type": "string" } },
+    "metadata": { "type": "object", "additionalProperties": true },
+    "sessions": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/session" }
+    }
+  },
+  "$defs": {
+    "session": {
+      "type": "object",
+      "required": ["session_id", "events"],
+      "additionalProperties": false,
+      "properties": {
+        "session_id": { "type": "string", "minLength": 1 },
+        "metadata": { "type": "object", "additionalProperties": true },
+        "events": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/event" }
+        }
+      }
+    },
+    "event": {
+      "type": "object",
+      "required": ["event_id", "at_s", "input"],
+      "additionalProperties": false,
+      "properties": {
+        "event_id": { "type": "string", "minLength": 1 },
+        "at_s": { "type": "number", "minimum": 0 },
+        "input": { "$ref": "#/$defs/input" },
+        "expect": { "$ref": "#/$defs/expectation" },
+        "metadata": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "input": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["kind", "text"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "text" },
+            "text": { "type": "string", "minLength": 1 }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "text"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "voice" },
+            "text": { "type": "string", "minLength": 1 },
+            "audio_url": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "text"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "dynamic_context" },
+            "text": { "type": "string", "minLength": 1 },
+            "mode": { "enum": ["append", "replace", "reset"] },
+            "run_llm": { "enum": ["true", "false", "auto"] },
+            "current_attention_object": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "expectation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "behavior": { "enum": ["respond", "abstain", "no_call"] },
+        "llm_call": { "type": "boolean" },
+        "verbal_response": { "type": "boolean" },
+        "latency_sla_ms": { "type": "number", "minimum": 0 },
+        "required_events": { "type": "array", "items": { "type": "string" } },
+        "ai_response_example": { "type": "string" },
+        "safety_or_edge_case_tags": { "type": "array", "items": { "type": "string" } },
+        "semantic_judge": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "rubric": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

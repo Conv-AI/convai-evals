@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Conv-AI/convai-evals/schemas/report.schema.json",
+  "title": "Convai Evals Report",
+  "type": "object",
+  "required": ["run_metadata", "summary", "per_bucket", "per_row"],
+  "additionalProperties": true,
+  "properties": {
+    "run_metadata": {
+      "type": "object",
+      "required": ["run_id", "timestamp", "endpoint", "endpointUrl", "characterId", "row_count", "session_count"],
+      "additionalProperties": true,
+      "properties": {
+        "run_id": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "endpoint": { "enum": ["prod", "preview", "staging"] },
+        "endpointUrl": { "type": "string" },
+        "characterId": { "type": "string" },
+        "row_count": { "type": "number" },
+        "session_count": { "type": "number" }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["structure_pass_rate_overall", "structure_pass_by_bucket", "latency_by_io_type"],
+      "additionalProperties": true
+    },
+    "per_bucket": {
+      "type": "array",
+      "items": { "type": "object", "additionalProperties": true }
+    },
+    "per_row": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["test_id", "session_id", "sequence_index", "input_kind", "expected", "observed", "failure_reason"],
+        "additionalProperties": true
+      }
+    }
+  }
+}

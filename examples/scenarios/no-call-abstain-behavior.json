@@ -1,0 +1,57 @@
+{
+  "schema_version": "convai-evals/v0",
+  "scenario_id": "no-call-abstain-behavior",
+  "title": "No-call and abstain behavior",
+  "description": "Checks that silent updates do not trigger model calls and that automatic updates can abstain without speaking.",
+  "tags": ["behavior", "no-call", "abstain"],
+  "sessions": [
+    {
+      "session_id": "abstain-session-001",
+      "events": [
+        {
+          "event_id": "ab-001-background-state",
+          "at_s": 0,
+          "input": {
+            "kind": "dynamic_context",
+            "text": "Background state changed, but the user has not taken an action.",
+            "mode": "append",
+            "run_llm": "false"
+          },
+          "expect": {
+            "behavior": "no_call",
+            "llm_call": false,
+            "verbal_response": false
+          }
+        },
+        {
+          "event_id": "ab-002-auto-state",
+          "at_s": 4,
+          "input": {
+            "kind": "dynamic_context",
+            "text": "A non-urgent notification became visible.",
+            "mode": "append",
+            "run_llm": "auto"
+          },
+          "expect": {
+            "behavior": "abstain",
+            "llm_call": true,
+            "verbal_response": false
+          }
+        },
+        {
+          "event_id": "ab-003-direct-question",
+          "at_s": 12,
+          "input": {
+            "kind": "text",
+            "text": "What should I pay attention to now?"
+          },
+          "expect": {
+            "behavior": "respond",
+            "llm_call": true,
+            "verbal_response": true
+          }
+        }
+      ]
+    }
+  ]
+}

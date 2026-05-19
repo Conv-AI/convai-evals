@@ -1,0 +1,81 @@
+{
+  "schema_version": "convai-evals/v0",
+  "scenario_id": "concurrency-preview-prod-compare",
+  "title": "Concurrency preview/prod compare",
+  "description": "A generic multi-session workload intended to be run once against preview and once against prod with the same report shape.",
+  "tags": ["concurrency", "preview-prod-compare", "latency"],
+  "metadata": {
+    "recommended_concurrency": 2,
+    "compare_fields": ["structure_pass_rate_overall", "latency_by_io_type", "failure_reason"]
+  },
+  "sessions": [
+    {
+      "session_id": "compare-session-001",
+      "events": [
+        {
+          "event_id": "cmp-001-text",
+          "at_s": 0,
+          "input": {
+            "kind": "text",
+            "text": "Give me a short status update."
+          },
+          "expect": {
+            "behavior": "respond",
+            "llm_call": true,
+            "verbal_response": true,
+            "latency_sla_ms": 1800
+          }
+        },
+        {
+          "event_id": "cmp-002-context",
+          "at_s": 9,
+          "input": {
+            "kind": "dynamic_context",
+            "text": "The user moved to a new screen and may need orientation.",
+            "mode": "append",
+            "run_llm": "auto"
+          },
+          "expect": {
+            "behavior": "abstain",
+            "llm_call": true,
+            "verbal_response": false
+          }
+        }
+      ]
+    },
+    {
+      "session_id": "compare-session-002",
+      "events": [
+        {
+          "event_id": "cmp-003-voice",
+          "at_s": 0,
+          "input": {
+            "kind": "voice",
+            "text": "What is a safe next thing to try?"
+          },
+          "expect": {
+            "behavior": "respond",
+            "llm_call": true,
+            "verbal_response": true,
+            "latency_sla_ms": 3500
+          }
+        },
+        {
+          "event_id": "cmp-004-silent-context",
+          "at_s": 10,
+          "input": {
+            "kind": "dynamic_context",
+            "text": "A passive inventory count changed in the background.",
+            "mode": "append",
+            "run_llm": "false"
+          },
+          "expect": {
+            "behavior": "no_call",
+            "llm_call": false,
+            "verbal_response": false
+          }
+        }
+      ]
+    }
+  ]
+}

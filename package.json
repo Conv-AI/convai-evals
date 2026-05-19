@@ -1,0 +1,58 @@
+{
+  "name": "@convai/evals",
+  "version": "0.1.0",
+  "private": false,
+  "description": "Agentic evaluation toolkit for Convai Character AI infrastructure.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Conv-AI/convai-evals.git"
+  },
+  "homepage": "https://github.com/Conv-AI/convai-evals#readme",
+  "bugs": {
+    "url": "https://github.com/Conv-AI/convai-evals/issues"
+  },
+  "keywords": [
+    "convai",
+    "evals",
+    "rtvi",
+    "web-sdk",
+    "agentic"
+  ],
+  "workspaces": [
+    "shared",
+    "web",
+    "server",
+    "worker",
+    "cli"
+  ],
+  "scripts": {
+    "dev:server": "npm --workspace server run dev",
+    "dev:web": "npm --workspace web run dev",
+    "dev:worker": "npm --workspace worker run build:watch",
+    "build:shared": "npm --workspace shared run build",
+    "build:worker": "npm --workspace worker run build",
+    "build:web": "npm --workspace web run build",
+    "build:server": "npm --workspace server run build",
+    "build:cli": "npm --workspace cli run build",
+    "build": "npm run build:shared && npm run build:cli && npm run build:worker && npm run build:web && npm run build:server",
+    "typecheck": "npm --workspace shared run typecheck && npm --workspace cli run typecheck && npm --workspace server run typecheck && npm --workspace web run build && npm --workspace worker run build",
+    "validate:examples": "npm run build:shared && npm run build:cli && node cli/dist/index.js validate examples/scenarios/*.json",
+    "playwright:install": "npx playwright install chromium"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0"
+  },
+  "bin": {
+    "convai-evals": "./cli/dist/index.js"
+  },
+  "files": [
+    "cli/dist",
+    "schemas",
+    "examples",
+    "recipes",
+    "docs",
+    "README.md",
+    "LICENSE"
+  ]
+}

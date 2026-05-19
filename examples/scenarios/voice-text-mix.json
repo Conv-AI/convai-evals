@@ -1,0 +1,46 @@
+{
+  "schema_version": "convai-evals/v0",
+  "scenario_id": "voice-text-mix",
+  "title": "Voice and text mixed input",
+  "description": "A small session that mixes synthetic microphone input with direct text input.",
+  "tags": ["voice", "text", "mixed-input"],
+  "sessions": [
+    {
+      "session_id": "voice-text-session-001",
+      "events": [
+        {
+          "event_id": "vt-001-voice-greeting",
+          "at_s": 0,
+          "input": {
+            "kind": "voice",
+            "text": "Hi, can you help me understand what is happening here?"
+          },
+          "expect": {
+            "behavior": "respond",
+            "llm_call": true,
+            "verbal_response": true,
+            "latency_sla_ms": 3000
+          }
+        },
+        {
+          "event_id": "vt-002-text-followup",
+          "at_s": 18,
+          "input": {
+            "kind": "text",
+            "text": "Give me the shortest useful next step."
+          },
+          "expect": {
+            "behavior": "respond",
+            "llm_call": true,
+            "verbal_response": true,
+            "latency_sla_ms": 1600,
+            "semantic_judge": {
+              "enabled": true,
+              "rubric": "The answer should be concise, helpful, and not mention hidden implementation details."
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
