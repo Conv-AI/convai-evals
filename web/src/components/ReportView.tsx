@@ -1,5 +1,11 @@
 import { Fragment, useMemo, useState, useCallback } from "react";
-import type { DiagnosticsSummary, FailureReason, PerRowResult, ReportPayload } from "@convai/evals-shared";
+import {
+  isFailureReasonFailure,
+  type DiagnosticsSummary,
+  type FailureReason,
+  type PerRowResult,
+  type ReportPayload,
+} from "@convai/evals-shared";
 import { downloadCsv, downloadJson } from "../report/exporters.js";
 
 interface Props {
@@ -14,7 +20,7 @@ export function ReportView({ report }: Props): JSX.Element {
   const visibleRows = useMemo(
     () =>
       failuresOnly
-        ? report.per_row.filter((r) => r.failure_reason !== "pass")
+        ? report.per_row.filter((r) => isFailureReasonFailure(r.failure_reason))
         : report.per_row,
     [report.per_row, failuresOnly],
   );
@@ -66,7 +72,15 @@ export function ReportView({ report }: Props): JSX.Element {
         <strong>{(report.summary.structure_pass_rate_overall * 100).toFixed(1)}%</strong>
       </p>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        {(["pass", "sla_miss", "behavior_mismatch_by_design", "behavior_mismatch_error", "timeout", "connection_error"] as FailureReason[]).map(
+        {([
+          "pass",
+          "interrupted_by_priority_event",
+          "sla_miss",
+          "behavior_mismatch_by_design",
+          "behavior_mismatch_error",
+          "timeout",
+          "connection_error",
+        ] as FailureReason[]).map(
           (key) => {
             const count = failureCounts[key] ?? 0;
             if (count === 0) return null;
@@ -167,7 +181,7 @@ export function ReportView({ report }: Props): JSX.Element {
             checked={failuresOnly}
             onChange={(e) => setFailuresOnly(e.target.checked)}
           />{" "}
-          Show failures only ({report.per_row.filter((r) => r.failure_reason !== "pass").length})
+          Show failures only ({report.per_row.filter((r) => isFailureReasonFailure(r.failure_reason)).length})
         </label>
       </div>
       <table>
@@ -526,6 +540,7 @@ function failureBadgeClass(r: FailureReason): string {
       return "badge-pass";
     case "sla_miss":
       return "badge-warn";
+    case "interrupted_by_priority_event":
     case "behavior_mismatch_by_design":
       return "badge-info";
     case "behavior_mismatch_error":
@@ -541,6 +556,8 @@ function failureRationale(row: PerRowResult, slaMs: number | null): string {
   switch (row.failure_reason) {
     case "pass":
       return "Behavior and SLA both passed.";
+    case "interrupted_by_priority_event":
+      return "A later run_llm=true context update preempted this in-flight response. This is expected priority behavior and is not counted as a failure.";
     case "sla_miss": {
       const e2e = row.latency.end_to_end_ms;
       return `Behavior matched (${expected}) but end-to-end latency${

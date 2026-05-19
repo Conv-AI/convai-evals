@@ -62,7 +62,8 @@ export class Scheduler {
       if (
         ev.name === "turnEnd" ||
         ev.name === "speakingChange:false" ||
-        ev.name === "llmNoResponse"
+        ev.name === "llmNoResponse" ||
+        ev.name === "interrupted_by_priority_event"
       ) {
         const resolve = this.rowDone.get(testId);
         if (resolve) resolve();
@@ -105,17 +106,32 @@ export class Scheduler {
       (row.input_kind === "Dynamic Context" && data.run_llm !== "false");
 
     // Flag Dynamic Context rows that fire while a previous bot turn is still in flight.
-    // The failure classifier uses this to distinguish "server dropped this update by design"
-    // from an actual behavior mismatch. Captured BEFORE enqueueing this row so the count
-    // reflects prior in-flight turns, not this one.
+    // Captured BEFORE enqueueing this row so the count reflects prior in-flight turns,
+    // not this one.
+    const pendingBefore = this.deps.sdk.getPendingResponseIds();
     if (row.input_kind === "Dynamic Context" && (data.run_llm === "auto" || data.run_llm === undefined)) {
-      const pendingCount = this.deps.sdk.getPendingResponseCount();
+      const pendingCount = pendingBefore.length;
       if (pendingCount > 0) {
         this.deps.events.send({
           type: "row_event",
           session_id: this.deps.sessionId,
           test_id: row.test_id,
           event: { name: "dispatched_mid_turn", ts: t, data: { pending_count: pendingCount } },
+        });
+      }
+    }
+    if (row.input_kind === "Dynamic Context" && data.run_llm === "true" && pendingBefore.length > 0) {
+      const interrupted = this.deps.sdk.interruptPendingResponses();
+      for (const interruptedTestId of interrupted) {
+        this.deps.events.send({
+          type: "row_event",
+          session_id: this.deps.sessionId,
+          test_id: interruptedTestId,
+          event: {
+            name: "interrupted_by_priority_event",
+            ts: t,
+            data: { preempting_test_id: row.test_id, pending_count: pendingBefore.length },
+          },
         });
       }
     }

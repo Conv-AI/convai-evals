@@ -6,6 +6,7 @@ export interface DiagConfig {
   analyticsBaseUrl: string;
   apiKey?: string;
   rowConcurrency: number;
+  fetchTimeoutMs: number;
   fetchSuccessfulRows: boolean;
 }
 
@@ -18,6 +19,7 @@ export function loadDiagConfig(): DiagConfig {
       process.env.CONVAI_ANALYTICS_BASE_URL ?? "https://analytics-api.convai.com/v1/analytics",
     apiKey: process.env.CONVAI_API_KEY,
     rowConcurrency: Number(process.env.DIAG_ROW_CONCURRENCY ?? "4"),
+    fetchTimeoutMs: Number(process.env.DIAG_FETCH_TIMEOUT_MS ?? "5000"),
     fetchSuccessfulRows: process.env.DIAG_FETCH_SUCCESSFUL_ROWS === "true",
   };
 }

@@ -37,6 +37,7 @@
     "build:cli": "npm --workspace cli run build",
     "build": "npm run build:shared && npm run build:cli && npm run build:worker && npm run build:web && npm run build:server",
     "typecheck": "npm --workspace shared run typecheck && npm --workspace cli run typecheck && npm --workspace server run typecheck && npm --workspace web run build && npm --workspace worker run build",
+    "test": "npm --workspace server run test",
     "validate:examples": "npm run build:shared && npm run build:cli && node cli/dist/index.js validate examples/scenarios/*.json",
     "playwright:install": "npx playwright install chromium"
   },

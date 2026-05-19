@@ -1,6 +1,7 @@
 import type {
   CapturedEvent,
   ExpectedBehavior,
+  ObservedBehavior,
   RowObservation,
   StructureMatch,
   TestRow,
@@ -9,10 +10,11 @@ import type {
 /**
  * Derive observed behavior bucket from the captured events + flags.
  */
-function deriveObservedBehavior(obs: RowObservation): ExpectedBehavior {
+function deriveObservedBehavior(obs: RowObservation): ObservedBehavior {
+  if (obs.interrupted_by_priority_event) return "interrupted_by_priority_event";
   if (!obs.llm_called) return "no_call";
-  if (obs.bot_spoke) return "respond";
-  return "abstain";
+  if (obs.bot_spoke) return "respond_with_audio";
+  return "respond_silent";
 }
 
 /**
@@ -39,17 +41,41 @@ function eventsConsistentWithBehavior(
       // LLM may have been considered but no audible response.
       return !sawBotAudio;
     case "respond":
+    case "respond_with_audio":
       // Expect bot to have produced something audible or textual.
       return sawBotAudio || sawBotOutput;
+    case "respond_silent":
+      return sawLlmInvoked && !sawBotAudio;
+    case "interrupted_by_priority_event":
+      return true;
+  }
+}
+
+function behaviorMatches(expected: ExpectedBehavior, observed: ObservedBehavior): boolean {
+  switch (expected) {
+    case "respond":
+    case "respond_with_audio":
+      return observed === "respond_with_audio" || observed === "interrupted_by_priority_event";
+    case "abstain":
+      return observed === "respond_silent" || observed === "no_call" || observed === "interrupted_by_priority_event";
+    case "respond_silent":
+      return observed === "respond_silent" || observed === "interrupted_by_priority_event";
+    case "no_call":
+      return observed === "no_call";
+    case "interrupted_by_priority_event":
+      return observed === "interrupted_by_priority_event";
   }
 }
 
 export function checkStructure(row: TestRow, obs: RowObservation): StructureMatch {
   const observed_behavior = deriveObservedBehavior(obs);
-  const behavior = observed_behavior === row.expected_response_behavior;
-  const llm_call = obs.llm_called === row.expected_llm_call;
-  const verbal = obs.bot_spoke === row.expected_verbal_response;
-  const events = eventsConsistentWithBehavior(row.expected_response_behavior, obs.events);
+  const behavior = behaviorMatches(row.expected_response_behavior, observed_behavior);
+  const interrupted = observed_behavior === "interrupted_by_priority_event";
+  const abstainViaNoCall =
+    row.expected_response_behavior === "abstain" && observed_behavior === "no_call";
+  const llm_call = interrupted || abstainViaNoCall || obs.llm_called === row.expected_llm_call;
+  const verbal = interrupted || abstainViaNoCall || obs.bot_spoke === row.expected_verbal_response;
+  const events = interrupted || eventsConsistentWithBehavior(row.expected_response_behavior, obs.events);
   return {
     behavior,
     llm_call,

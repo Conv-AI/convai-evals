@@ -6,6 +6,7 @@ import {
   SCENARIO_SCHEMA_VERSION,
   assertScenario,
   explainScenario,
+  isFailureReasonFailure,
   scenarioToTestRows,
   validateScenario,
   type EvalEvent,
@@ -125,7 +126,7 @@ async function reportCommand(files: string[]): Promise<void> {
   if (files.length !== 1) throw new Error("usage: convai-evals report <report.json>");
   const report = await readJson(files[0]!);
   const rows = Array.isArray(report?.per_row) ? report.per_row : [];
-  const failures = rows.filter((row: any) => row?.failure_reason && row.failure_reason !== "pass");
+  const failures = rows.filter((row: any) => row?.failure_reason && isFailureReasonFailure(row.failure_reason));
   console.log(`run_id: ${report?.run_metadata?.run_id ?? "unknown"}`);
   console.log(`rows: ${rows.length}`);
   console.log(`failures: ${failures.length}`);

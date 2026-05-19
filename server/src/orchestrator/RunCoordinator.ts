@@ -266,6 +266,7 @@ function buildPerRow(row: TestRow, obs: RowObservation | undefined, config: RunC
     turn_trace: fallbackObs.turn_trace,
     server_e2e_ms: fallbackObs.turn_trace?.e2e_ms,
     was_canceled: fallbackObs.was_canceled,
+    interrupted_by_priority_event: fallbackObs.interrupted_by_priority_event,
     dispatched_mid_turn: fallbackObs.dispatched_mid_turn,
     failure_reason: "pass",
   };
@@ -275,7 +276,7 @@ function buildPerRow(row: TestRow, obs: RowObservation | undefined, config: RunC
 }
 
 async function judgeRows(rows: PerRowResult[], everyNth: number, apiKey?: string): Promise<void> {
-  const respondRows = rows.filter((r) => r.structure_match.observed_behavior === "respond");
+  const respondRows = rows.filter((r) => r.structure_match.observed_behavior === "respond_with_audio");
   const sampled = respondRows.filter((_, idx) => idx % Math.max(1, everyNth) === 0);
   const concurrency = 10;
   let cursor = 0;
@@ -378,6 +379,9 @@ function bucketKeyFor(row: PerRowResult): string {
     // ignore
   }
   // Derive from expected_llm_call + expected_verbal_response combo as a fallback
+  if (row.expected.behavior === "interrupted_by_priority_event") return "dyn_interrupted";
+  if (row.expected.behavior === "respond_silent") return "dyn_auto";
+  if (row.expected.behavior === "respond_with_audio") return "dyn_true";
   if (row.expected.llm_call && row.expected.verbal) return "dyn_true";
   if (row.expected.llm_call && !row.expected.verbal) return "dyn_auto";
   return "dyn_false";

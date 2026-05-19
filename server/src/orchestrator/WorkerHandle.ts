@@ -292,5 +292,10 @@ function applyEventToObservation(obs: RowObservation, ev: CapturedEvent): void {
       // "server collapsed this by design" from "server has a real bug".
       obs.dispatched_mid_turn = true;
       break;
+    case "interrupted_by_priority_event":
+      // Synthetic event emitted when a run_llm=true context update preempts a pending
+      // response. This is spec-correct and should not be classified as a timeout.
+      obs.interrupted_by_priority_event = true;
+      break;
   }
 }

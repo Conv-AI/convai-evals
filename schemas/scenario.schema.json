@@ -84,7 +84,16 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "behavior": { "enum": ["respond", "abstain", "no_call"] },
+        "behavior": {
+          "enum": [
+            "respond",
+            "abstain",
+            "no_call",
+            "respond_with_audio",
+            "respond_silent",
+            "interrupted_by_priority_event"
+          ]
+        },
         "llm_call": { "type": "boolean" },
         "verbal_response": { "type": "boolean" },
         "latency_sla_ms": { "type": "number", "minimum": 0 },

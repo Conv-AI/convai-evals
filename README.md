@@ -9,6 +9,7 @@ Agentic evaluation toolkit for Convai Character AI infrastructure.
 ```bash
 npm install
 npm run build
+npm test
 npm run validate:examples
 ```
 
@@ -31,7 +32,7 @@ npm run dev:server
 npm run dev:web
 ```
 
-Then open the Vite URL, load the synthetic sample or upload a CSV adapter file, enter a safe non-customer character ID plus API key, and run the eval. Reports are JSON-first and can be exported as CSV from the UI.
+Then open the Vite URL, load the synthetic sample or upload a CSV adapter file, enter a safe non-customer character ID plus API key, and run the eval. The web dev server is pinned to port 5180 with strict-port mode so it fails loudly instead of silently moving to another app's port. Reports are JSON-first and can be exported as CSV from the UI.
 
 ## Scenario Format
 
@@ -58,6 +59,8 @@ The canonical input is versioned JSON:
 ```
 
 Supported v0 input kinds are `text`, `voice`, and `dynamic_context`. Domain-specific fields belong in opaque `metadata`; do not add customer-specific columns to the public schema. See [scenario.schema.json](schemas/scenario.schema.json) and [docs/scenario-format.md](docs/scenario-format.md).
+
+Behavior expectations support legacy values `respond`, `abstain`, and `no_call`, plus precise values `respond_with_audio`, `respond_silent`, and `interrupted_by_priority_event`. Legacy `abstain` passes when the server reaches silence through either a silent LLM result or a clean no-call path.
 
 ## Web SDK Dependency
 

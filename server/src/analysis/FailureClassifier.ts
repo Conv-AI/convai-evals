@@ -11,7 +11,7 @@ import type {
  * rows that mismatched for understandable reasons (e.g. an auto Dynamic Context fired while
  * the bot was speaking — server correctly collapsed it to no_call).
  *
- * Resolution order matters: connection_error > timeout > sla_miss > by_design > error > pass.
+ * Resolution order matters: connection_error > interrupted > pass > timeout > by_design > error.
  */
 export function classifyFailure(
   row: TestRow,
@@ -35,7 +35,12 @@ export function classifyFailure(
     );
 
   const expectedResponse =
-    row.expected_response_behavior === "respond" || row.expected_response_behavior === "abstain";
+    row.expected_response_behavior !== "no_call" &&
+    row.expected_response_behavior !== "interrupted_by_priority_event";
+
+  if (structure.observed_behavior === "interrupted_by_priority_event") {
+    return "interrupted_by_priority_event";
+  }
 
   if (structure.overall) {
     if (sla_pass === false) return "sla_miss";

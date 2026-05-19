@@ -13,18 +13,17 @@ function firstDefined(...vals: Array<number | undefined>): number | undefined {
 
 export function computeLatency(ts: RowTimestamps): RowLatency {
   const out: RowLatency = {};
-  // Public SDK 1.3.x does not emit botRespondingChange or turnEnd, so each derived
-  // metric falls back through the chain of observable signals nearest to its
-  // intent. The fallback chains are ordered from most-precise to least-precise.
-  const llmStart = firstDefined(ts.t_responding_start, ts.t_first_bot_output, ts.t_tts_started, ts.t_speaking_start);
+  // Keep user-perceived bot-start separate from first audio/TTS chunk. Older harness
+  // versions used the same fallback for both, which made ttfb_ms == ttfa_ms.
+  const llmStart = firstDefined(ts.t_responding_start, ts.t_first_bot_output);
   const llmEnd = firstDefined(ts.t_responding_end, ts.t_tts_started, ts.t_speaking_start);
   const turnEnd = firstDefined(ts.t_turn_end, ts.t_speaking_end, ts.t_responding_end);
 
-  if (ts.t_input_end != null && llmStart != null) {
-    out.ttfb_ms = llmStart - ts.t_input_end;
-  }
   if (ts.t_input_end != null && ts.t_speaking_start != null) {
-    out.ttfa_ms = ts.t_speaking_start - ts.t_input_end;
+    out.ttfb_ms = ts.t_speaking_start - ts.t_input_end;
+  }
+  if (ts.t_input_end != null && ts.t_tts_started != null) {
+    out.ttfa_ms = ts.t_tts_started - ts.t_input_end;
   }
   if (llmStart != null && llmEnd != null && llmEnd >= llmStart) {
     out.llm_ms = llmEnd - llmStart;
@@ -48,10 +47,9 @@ function percentile(sorted: number[], p: number): number {
 /** Bucket label derived from input + observed behavior, used for latency grouping. */
 export function ioBucket(row: PerRowResult): string {
   const inK = row.input_kind === "Voice In" ? "voice_in" : row.input_kind === "Text In" ? "text_in" : "context";
-  if (row.structure_match.observed_behavior === "respond") {
-    return row.observed.verbal ? `${inK}->voice+anim` : `${inK}->text`;
-  }
-  if (row.structure_match.observed_behavior === "abstain") return `${inK}->abstain`;
+  if (row.structure_match.observed_behavior === "respond_with_audio") return `${inK}->voice+anim`;
+  if (row.structure_match.observed_behavior === "respond_silent") return `${inK}->respond_silent`;
+  if (row.structure_match.observed_behavior === "interrupted_by_priority_event") return `${inK}->interrupted`;
   return `${inK}->silent`;
 }
 

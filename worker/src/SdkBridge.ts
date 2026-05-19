@@ -201,6 +201,19 @@ export class SdkBridge {
     return this.pendingResponses.length;
   }
 
+  getPendingResponseIds(): string[] {
+    return [...this.pendingResponses];
+  }
+
+  interruptPendingResponses(): string[] {
+    const interrupted = [...this.pendingResponses];
+    this.pendingResponses = [];
+    if (interrupted.length > 0) {
+      this.lastBotTurnOwner = interrupted[interrupted.length - 1] ?? null;
+    }
+    return interrupted;
+  }
+
   /** Idempotent: removes testId from the queue if still present (used on row timeout). */
   cancelPendingResponse(testId: string): void {
     this.pendingResponses = this.pendingResponses.filter((t) => t !== testId);

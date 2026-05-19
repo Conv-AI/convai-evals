@@ -1,10 +1,22 @@
 // Shared types used by web, server, and worker.
 
 export type InputKind = "Voice In" | "Text In" | "Dynamic Context";
-export type ExpectedBehavior = "respond" | "abstain" | "no_call";
+export type ExpectedBehavior =
+  | "respond"
+  | "abstain"
+  | "no_call"
+  | "respond_with_audio"
+  | "respond_silent"
+  | "interrupted_by_priority_event";
+export type ObservedBehavior =
+  | "respond_with_audio"
+  | "respond_silent"
+  | "no_call"
+  | "interrupted_by_priority_event";
 export type FailureReason =
   | "pass"
   | "sla_miss"
+  | "interrupted_by_priority_event"
   | "behavior_mismatch_by_design"
   | "behavior_mismatch_error"
   | "timeout"
@@ -13,6 +25,12 @@ export type ContextMode = "append" | "replace" | "reset";
 export type RunLlm = "true" | "false" | "auto";
 export type EndpointKey = "prod" | "preview" | "staging";
 export type TtsProvider = "local" | "google";
+
+export function isFailureReasonFailure(reason: FailureReason): boolean {
+  return reason !== "pass" &&
+    reason !== "interrupted_by_priority_event" &&
+    reason !== "behavior_mismatch_by_design";
+}
 
 export interface TestRow {
   test_id: string;
@@ -129,6 +147,7 @@ export interface RowObservation {
   // Server-emitted per-turn breakdown (requires debug=true on connect).
   turn_trace?: TurnTrace;
   was_canceled?: boolean;
+  interrupted_by_priority_event?: boolean;
   /** Set when a Dynamic Context row dispatched while a previous bot turn was still
    * in flight. Used by the failure classifier to flag mismatches as "by design". */
   dispatched_mid_turn?: boolean;
@@ -140,7 +159,7 @@ export interface StructureMatch {
   verbal: boolean;
   events: boolean;
   overall: boolean;
-  observed_behavior: ExpectedBehavior;
+  observed_behavior: ObservedBehavior;
 }
 
 export interface JudgeScores {
@@ -177,7 +196,7 @@ export interface PerRowResult {
     input_text?: string;
   };
   observed: {
-    behavior: ExpectedBehavior;
+    behavior: ObservedBehavior;
     llm_call: boolean;
     verbal: boolean;
     events: string[];
@@ -198,6 +217,7 @@ export interface PerRowResult {
   turn_trace?: TurnTrace;
   server_e2e_ms?: number;
   was_canceled?: boolean;
+  interrupted_by_priority_event?: boolean;
   dispatched_mid_turn?: boolean;
   failure_reason: FailureReason;
   diagnostics?: DiagnosticsSummary;

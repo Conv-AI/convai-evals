@@ -93,8 +93,11 @@ async function collectForRow(
 async function fetchAnalytics(cfg: DiagConfig, suffix: string): Promise<AnalyticsApiResult> {
   const base = cfg.analyticsBaseUrl.replace(/\/$/, "");
   const endpoint = `${base}${suffix}`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Math.max(1, cfg.fetchTimeoutMs));
   try {
     const res = await fetch(endpoint, {
+      signal: controller.signal,
       headers: {
         "content-type": "application/json",
         "x-api-key": cfg.apiKey ?? "",
@@ -120,8 +123,12 @@ async function fetchAnalytics(cfg: DiagConfig, suffix: string): Promise<Analytic
       endpoint,
       status: 0,
       ok: false,
-      error: e instanceof Error ? e.message : String(e),
+      error: e instanceof Error && e.name === "AbortError"
+        ? `timeout after ${cfg.fetchTimeoutMs}ms`
+        : e instanceof Error ? e.message : String(e),
     };
+  } finally {
+    clearTimeout(timeout);
   }
 }
 

@@ -61,8 +61,16 @@ export const REQUIRED_COLUMNS: readonly CsvColumnSpec[] = [
     name: "expected_response_behavior",
     required: true,
     type: "enum",
-    enumValues: ["respond", "abstain", "no_call"] as const,
-    description: "Expected high-level behavior.",
+    enumValues: [
+      "respond",
+      "abstain",
+      "no_call",
+      "respond_with_audio",
+      "respond_silent",
+      "interrupted_by_priority_event",
+    ] as const,
+    description:
+      "Expected high-level behavior. Legacy aliases: respond=respond_with_audio; abstain accepts silent LLM or no LLM.",
     example: "respond",
   },
   {

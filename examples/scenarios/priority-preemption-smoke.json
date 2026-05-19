@@ -1,0 +1,59 @@
+{
+  "schema_version": "convai-evals/v0",
+  "scenario_id": "priority-preemption-smoke",
+  "title": "Priority preemption smoke",
+  "description": "Small functional scenario for run_llm=true priority updates interrupting an in-flight response and for abstain/no-call compatibility.",
+  "tags": ["dynamic-context", "preemption", "abstain", "smoke"],
+  "sessions": [
+    {
+      "session_id": "priority-preemption-001",
+      "events": [
+        {
+          "event_id": "priority-001-long-question",
+          "at_s": 0,
+          "input": {
+            "kind": "text",
+            "text": "Give me a short overview of the current quest and the next useful action."
+          },
+          "expect": {
+            "behavior": "interrupted_by_priority_event",
+            "llm_call": true,
+            "verbal_response": true
+          }
+        },
+        {
+          "event_id": "priority-002-context-preempt",
+          "at_s": 0.4,
+          "input": {
+            "kind": "dynamic_context",
+            "mode": "replace",
+            "run_llm": "true",
+            "current_attention_object": "urgent_offer_modal",
+            "text": "A high-priority offer modal opened. The assistant should address this updated screen state first."
+          },
+          "expect": {
+            "behavior": "respond",
+            "llm_call": true,
+            "verbal_response": true
+          }
+        },
+        {
+          "event_id": "priority-003-silent-state",
+          "at_s": 4,
+          "input": {
+            "kind": "dynamic_context",
+            "mode": "append",
+            "run_llm": "auto",
+            "current_attention_object": "quest_panel",
+            "text": "Background quest progress changed without requiring the assistant to speak."
+          },
+          "expect": {
+            "behavior": "abstain",
+            "llm_call": true,
+            "verbal_response": false
+          }
+        }
+      ]
+    }
+  ]
+}

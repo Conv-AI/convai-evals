@@ -218,9 +218,15 @@ function validateExpectation(
     expect.behavior != null &&
     expect.behavior !== "respond" &&
     expect.behavior !== "abstain" &&
-    expect.behavior !== "no_call"
+    expect.behavior !== "no_call" &&
+    expect.behavior !== "respond_with_audio" &&
+    expect.behavior !== "respond_silent" &&
+    expect.behavior !== "interrupted_by_priority_event"
   ) {
-    fail(`${path}.behavior`, "must be respond, abstain, or no_call");
+    fail(
+      `${path}.behavior`,
+      "must be respond, abstain, no_call, respond_with_audio, respond_silent, or interrupted_by_priority_event",
+    );
   }
   if (expect.llm_call != null && typeof expect.llm_call !== "boolean") {
     fail(`${path}.llm_call`, "must be boolean");
