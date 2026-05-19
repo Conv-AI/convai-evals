@@ -10,7 +10,7 @@ interface Props {
 }
 
 export function ConfigForm({ sessionIds, defaultConcurrency, disabled, onStart }: Props): JSX.Element {
-  const [endpoint, setEndpoint] = useState<EndpointKey>("staging");
+  const [endpoint, setEndpoint] = useState<EndpointKey>("prod");
   const [endpoints, setEndpoints] = useState<Record<EndpointKey, string>>({
     prod: "",
     preview: "",
