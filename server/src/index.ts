@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { existsSync } from "node:fs";
+import { existsSync, promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
@@ -63,6 +63,27 @@ app.get("/api/endpoints", (_req, res) => {
   });
 });
 
+// Local visual lipsync convenience secrets. This is intentionally a repo-root
+// untracked file for local testing only, not a general credential store.
+app.get("/api/visual-lipsync/secrets", async (_req, res) => {
+  try {
+    const secretsPath = findVisualLipsyncSecretsPath();
+    if (!secretsPath) {
+      res.json({ apiKey: "", characterId: "", source: "" });
+      return;
+    }
+    const text = await fs.readFile(secretsPath, "utf8");
+    const parsed = parseVisualLipsyncSecrets(text);
+    res.json({
+      apiKey: parsed["api-key"] ?? "",
+      characterId: parsed["character-id"] ?? "",
+      source: "visual_lipsync_testing_secrets",
+    });
+  } catch {
+    res.json({ apiKey: "", characterId: "", source: "" });
+  }
+});
+
 // Serve diagnostics bundle JSON by absolute path (validated to stay inside diagnostics/).
 app.get("/api/diagnostics/bundle", async (req, res) => {
   const rawPath = typeof req.query.path === "string" ? req.query.path : "";
@@ -93,6 +114,23 @@ app.post("/api/judge", async (req, res) => {
   }
 });
 
+app.post("/api/visual-lipsync/report", async (req, res) => {
+  try {
+    const report = req.body as { runId?: string };
+    const runId = sanitizeReportId(report?.runId ?? "visual-lipsync");
+    const targetDir = path.resolve(__dirname, "../..", "reports");
+    await fs.mkdir(targetDir, { recursive: true });
+    const content = `${JSON.stringify(req.body, null, 2)}\n`;
+    const runPath = path.join(targetDir, `visual-lipsync-${runId}.json`);
+    const latestPath = path.join(targetDir, "visual-lipsync-latest.json");
+    await fs.writeFile(runPath, content, "utf8");
+    await fs.writeFile(latestPath, content, "utf8");
+    res.json({ ok: true, path: runPath });
+  } catch (e) {
+    res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
 const server = createServer(app);
 
 // --- WebSocket plumbing ---
@@ -114,6 +152,37 @@ const workerSocketHandlers: WorkerSocketRegistry = {};
 
 function workerKey(sessionId: string, runId: string): string {
   return `${runId}:${sessionId}`;
+}
+
+function parseVisualLipsyncSecrets(text: string): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const idx = trimmed.indexOf("=");
+    if (idx <= 0) continue;
+    const key = trimmed.slice(0, idx).trim().toLowerCase();
+    const value = trimmed.slice(idx + 1).trim();
+    if (key === "api-key" || key === "character-id") result[key] = value;
+  }
+  return result;
+}
+
+function findVisualLipsyncSecretsPath(): string | null {
+  const candidates = [
+    path.resolve(process.cwd(), "visual_lipsync_testing_secrets"),
+    path.resolve(process.cwd(), "../visual_lipsync_testing_secrets"),
+    path.resolve(__dirname, "../../visual_lipsync_testing_secrets"),
+    path.resolve(__dirname, "../../../visual_lipsync_testing_secrets"),
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+function sanitizeReportId(id: string): string {
+  return id.replace(/[^a-zA-Z0-9._-]/g, "-").slice(0, 80) || "visual-lipsync";
 }
 
 const coordinator = new RunCoordinator({

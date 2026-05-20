@@ -5,6 +5,7 @@ server/src/static/
 server/diagnostics/
 .env
 .env.local
+visual_lipsync_testing_secrets
 cache/tts/
 reports/
 report-*.json
@@ -15,3 +16,4 @@ rtvi-messages-*.json
 .vscode/
 .idea/
 .claude/
+dev.bat

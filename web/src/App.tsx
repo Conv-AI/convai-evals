@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { RunHandle } from "./api/orchestrator.js";
 import type { ReportPayload, RunConfig, TestRow, WsServerToClient } from "@convai/evals-shared";
 import { CsvUpload } from "./components/CsvUpload.js";
@@ -9,6 +9,7 @@ import { ReportView } from "./components/ReportView.js";
 import { DatasetDetail } from "./components/DatasetDetail.js";
 import { CsvParseError, parseCsvFile, parseCsvText, type CsvParseResult } from "./csv/CsvParser.js";
 import { startRun } from "./api/orchestrator.js";
+import { VisualLipsyncPage } from "./visual/VisualLipsyncPage.js";
 
 interface RunState {
   events: WsServerToClient[];
@@ -41,6 +42,9 @@ interface DatasetState {
 }
 
 export function App(): JSX.Element {
+  const [view, setView] = useState<"evals" | "visual">(() =>
+    window.location.hash === "#visual-lipsync" ? "visual" : "evals",
+  );
   const [dataset, setDataset] = useState<DatasetState | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [run, setRun] = useState<RunState>(initialRunState);
@@ -48,6 +52,30 @@ export function App(): JSX.Element {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const reportInputRef = useRef<HTMLInputElement>(null);
   const runHandleRef = useRef<RunHandle | null>(null);
+
+  useEffect(() => {
+    const onHashChange = () => {
+      setView(window.location.hash === "#visual-lipsync" ? "visual" : "evals");
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  const openVisual = () => {
+    window.location.hash = "visual-lipsync";
+    setView("visual");
+  };
+
+  const openEvals = () => {
+    if (window.location.hash) {
+      history.pushState("", document.title, window.location.pathname + window.location.search);
+    }
+    setView("evals");
+  };
+
+  if (view === "visual") {
+    return <VisualLipsyncPage onBack={openEvals} />;
+  }
 
   const handleStart = async (config: RunConfig) => {
     if (!dataset) return;
@@ -163,9 +191,14 @@ export function App(): JSX.Element {
           <h1>Convai Evals</h1>
           <p className="muted">Agentic evaluation toolkit for Convai Character AI infrastructure.</p>
         </div>
-        <button className="primary-outline" style={{ marginTop: 8, flexShrink: 0 }} onClick={triggerReportLoad}>
-          Load saved report
-        </button>
+        <div className="header-actions">
+          <button className="primary-outline" style={{ marginTop: 8, flexShrink: 0 }} onClick={openVisual}>
+            Visual Lipsync
+          </button>
+          <button className="primary-outline" style={{ marginTop: 8, flexShrink: 0 }} onClick={triggerReportLoad}>
+            Load saved report
+          </button>
+        </div>
       </header>
 
       <section>
