@@ -4,7 +4,10 @@ const LOCAL_REPORT_KEY = "convai.visualLipsync.latestReport";
 
 export async function saveVisualReport(report: VisualReportPayload): Promise<void> {
   const sanitized = sanitizeReport(report);
-  localStorage.setItem(LOCAL_REPORT_KEY, JSON.stringify(sanitized));
+  // Stash a slim copy locally for quick reload; the full report goes to the server,
+  // where 20-turn payloads (snapshots + samples + debug events) easily exceed
+  // localStorage's ~5 MB quota.
+  saveLocalSlim(sanitized);
   const resp = await fetch("/api/visual-lipsync/report", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -16,7 +19,34 @@ export async function saveVisualReport(report: VisualReportPayload): Promise<voi
 }
 
 export function saveVisualReportLocal(report: VisualReportPayload): void {
-  localStorage.setItem(LOCAL_REPORT_KEY, JSON.stringify(sanitizeReport(report)));
+  saveLocalSlim(sanitizeReport(report));
+}
+
+function saveLocalSlim(report: VisualReportPayload): void {
+  // Drop the heavy per-sample / per-event / image-data fields before stashing.
+  const slim: VisualReportPayload = {
+    ...report,
+    currentTurn: report.currentTurn
+      ? {
+          ...report.currentTurn,
+          samples: [],
+          debugEvents: report.currentTurn.debugEvents.slice(-40),
+          snapshots: [],
+        }
+      : null,
+    results: report.results.map((r) => ({
+      ...r,
+      samples: [],
+      debugEvents: r.debugEvents.slice(-40),
+      snapshots: [],
+    })),
+  };
+  try {
+    localStorage.setItem(LOCAL_REPORT_KEY, JSON.stringify(slim));
+  } catch {
+    // localStorage quota or privacy-mode errors are non-fatal: the server has the
+    // full report and the UI uses in-memory state for the live view.
+  }
 }
 
 function sanitizeReport(report: VisualReportPayload): VisualReportPayload {

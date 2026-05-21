@@ -25,6 +25,13 @@ export class AudioProbe {
     this.onLog = handler;
   }
 
+  resetTurnStats(): void {
+    this.maxLevel = 0;
+    this.level = 0;
+    this.lastAttachError = undefined;
+    this.lastPlayError = undefined;
+  }
+
   setMuted(muted: boolean): void {
     this.muted = muted;
     for (const el of this.audioElements.values()) {

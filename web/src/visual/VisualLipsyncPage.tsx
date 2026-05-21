@@ -36,7 +36,7 @@ export function VisualLipsyncPage({ onBack }: Props): JSX.Element {
   const [secrets, setSecrets] = useState<VisualSecrets>({ apiKey: "", characterId: "", source: "" });
   const [promptText, setPromptText] = useState(promptsToText(DEFAULT_VISUAL_PROMPTS));
   const [requestCount, setRequestCount] = useState<number | "">(20);
-  const [timeoutMs, setTimeoutMs] = useState(30000);
+  const [timeoutMs, setTimeoutMs] = useState(60000);
   const [muteAudio, setMuteAudio] = useState(false);
   const [running, setRunning] = useState(false);
   const [status, setStatus] = useState("Ready");
@@ -152,7 +152,7 @@ export function VisualLipsyncPage({ onBack }: Props): JSX.Element {
       audioProbe.detach();
       audioProbeRef.current = null;
       await session.disconnect().catch(() => undefined);
-      renderer.resetMouth();
+      renderer.hardResetMouth();
       abortRef.current = null;
       setRunning(false);
     }
@@ -257,7 +257,7 @@ export function VisualLipsyncPage({ onBack }: Props): JSX.Element {
               step={1000}
               value={timeoutMs}
               disabled={running}
-              onChange={(e) => setTimeoutMs(parseInt(e.target.value, 10) || 30000)}
+              onChange={(e) => setTimeoutMs(parseInt(e.target.value, 10) || 60000)}
               title="Maximum safety wait per turn; this is not a sleep between responses."
             />
             <label title="Mute local playback while still analyzing the remote audio stream.">

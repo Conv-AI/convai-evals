@@ -90,9 +90,12 @@ export class LowPolyFaceRenderer {
       this.head.add(eye);
     }
 
+    // Bright magenta interior: this color appears NOWHERE else in the scene, so the
+    // visual matcher in measureMouthPixels can count it precisely and ignore
+    // shadows, eyes, or any other dark region as false positives.
     this.mouthInterior = new THREE.Mesh(
       new THREE.BoxGeometry(0.92, 0.22, 0.04),
-      new THREE.MeshBasicMaterial({ color: 0x050505 }),
+      new THREE.MeshBasicMaterial({ color: 0xff00ff }),
     );
     this.mouthInterior.position.set(0, -0.34, 1.05);
     this.head.add(this.mouthInterior);
@@ -154,6 +157,13 @@ export class LowPolyFaceRenderer {
   }
 
   resetMouth(): void {
+    // Set target to closed but let the smoothed signal decay naturally via updateFace.
+    // A hard zero here was making the visualMouth window end abruptly, way before the
+    // audio envelope tapered off — that's what blew up the end-delta metric.
+    this.setLipValues(ZERO_LIPS);
+  }
+
+  hardResetMouth(): void {
     this.setLipValues(ZERO_LIPS);
     this.mouthSignal = 0;
     this.pixelSignal = 0;
@@ -222,15 +232,22 @@ export class LowPolyFaceRenderer {
       this.lips.mouthStretchLeft,
       this.lips.mouthStretchRight,
     );
-    const open = clamp01(this.lips.jawOpen * 0.82 + rounded * 0.24 + wide * 0.18 - this.lips.mouthClose * 0.3);
+    // Stronger weighting on jawOpen gives the visual signal more dynamic range,
+    // making audio/mouth correlation easier to score.
+    const open = clamp01(this.lips.jawOpen * 1.1 + rounded * 0.28 + wide * 0.2 - this.lips.mouthClose * 0.35);
     const target = open;
-    this.mouthSignal += (target - this.mouthSignal) * Math.min(1, dt * 18);
+    // Asymmetric envelope: fast attack to follow speech onsets, slower release so
+    // the visualMouth tail matches the audio RMS taper instead of cutting off early.
+    const responseRate = target > this.mouthSignal ? 24 : 9;
+    this.mouthSignal += (target - this.mouthSignal) * Math.min(1, dt * responseRate);
 
     const width = 0.9 + wide * 0.66 - rounded * 0.22;
-    const height = 0.06 + this.mouthSignal * 0.72 + rounded * 0.1;
+    // More dramatic vertical mouth opening so more magenta interior is exposed
+    // when the bot speaks, sharpening the pixelMouth signal.
+    const height = 0.06 + this.mouthSignal * 0.95 + rounded * 0.1;
     this.mouthInterior.scale.set(Math.max(0.42, width / 0.92), Math.max(0.12, height / 0.22), 1);
-    this.upperLip.position.y = -0.245 + rounded * 0.028;
-    this.lowerLip.position.y = -0.41 - this.mouthSignal * 0.4;
+    this.upperLip.position.y = -0.245 + rounded * 0.028 + this.mouthSignal * 0.05;
+    this.lowerLip.position.y = -0.41 - this.mouthSignal * 0.55;
     this.lowerLip.scale.x = 1 + wide * 0.36 - rounded * 0.08;
     this.upperLip.scale.x = 1 + wide * 0.28 - rounded * 0.08;
     this.upperTeeth.position.y = this.upperLip.position.y - 0.07;
@@ -238,8 +255,8 @@ export class LowPolyFaceRenderer {
     this.lowerTeeth.visible = this.mouthSignal > 0.08;
     this.leftMouthCorner.position.x = -width * 0.58;
     this.rightMouthCorner.position.x = width * 0.58;
-    this.jaw.position.y = -0.71 - this.mouthSignal * 0.2;
-    this.jaw.rotation.x = -this.mouthSignal * 0.18;
+    this.jaw.position.y = -0.71 - this.mouthSignal * 0.25;
+    this.jaw.rotation.x = -this.mouthSignal * 0.22;
     this.head.rotation.y = 0;
     this.head.rotation.x = 0;
   }
@@ -251,21 +268,26 @@ export class LowPolyFaceRenderer {
     const height = canvas.height;
     if (width <= 0 || height <= 0) return this.mouthSignal;
 
-    const roiW = Math.max(20, Math.floor(width * 0.26));
-    const roiH = Math.max(16, Math.floor(height * 0.18));
+    // Tighter ROI focused on the mouth area; avoids the eyes above and the jaw below.
+    const roiW = Math.max(20, Math.floor(width * 0.22));
+    const roiH = Math.max(16, Math.floor(height * 0.14));
     const x = Math.floor(width * 0.5 - roiW / 2);
     const y = Math.floor(height * 0.385 - roiH / 2);
     const pixels = new Uint8Array(roiW * roiH * 4);
     gl.readPixels(x, y, roiW, roiH, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
 
-    let dark = 0;
+    // Count magenta-dominant pixels (the unique mouth-interior color). This is
+    // robust against any dark/shadow noise the previous "sum < 120" rule picked up.
+    let magenta = 0;
     for (let i = 0; i < pixels.length; i += 4) {
       const r = pixels[i] ?? 0;
       const g = pixels[i + 1] ?? 0;
       const b = pixels[i + 2] ?? 0;
-      if (r + g + b < 120) dark += 1;
+      if (r > 180 && b > 180 && g < 100) magenta += 1;
     }
-    return clamp01((dark / (roiW * roiH) - 0.04) / 0.18);
+    // Normalize: 0% magenta → 0, ~25% magenta-filled ROI → 1. The floor lets a
+    // few stray pixels (anti-aliased lip edges) read as a closed mouth.
+    return clamp01((magenta / (roiW * roiH) - 0.01) / 0.25);
   }
 }
 

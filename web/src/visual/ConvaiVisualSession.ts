@@ -12,7 +12,6 @@ export interface VisualSessionConfig {
 
 export interface VisualSessionSink {
   onSpeakingChange?(speaking: boolean, atMs: number): void;
-  onBlendshapeFrame?(values: LipSyncValues, atMs: number): void;
   onBlendshapeFrames?(values: LipSyncValues[], atMs: number): void;
   onBlendshapeChunk?(frameCount: number, atMs: number): void;
   onBlendshapeStats?(stats: VisualTurnStats | undefined, atMs: number): void;
@@ -65,9 +64,6 @@ export class ConvaiVisualSession {
       this.sink?.onBlendshapeChunk?.(frames.length, atMs);
       const values = frames.map((frame) => getLipSyncValuesFromOrder61(frame));
       this.sink?.onBlendshapeFrames?.(values, atMs);
-      for (const value of values) {
-        this.sink?.onBlendshapeFrame?.(value, atMs);
-      }
     });
     this.on("blendshapeStatsReceived", (data: unknown) => {
       const atMs = performance.now();
@@ -141,6 +137,15 @@ export class ConvaiVisualSession {
       return;
     }
     throw new Error("sendUserTextMessage is not available on the Convai client");
+  }
+
+  interrupt(): void {
+    if (!this.client) return;
+    try {
+      this.client.sendInterruptMessage?.();
+    } catch {
+      // Best-effort interrupt; SDK may throw if no response is in progress.
+    }
   }
 
   getRoom(): any {

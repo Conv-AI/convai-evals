@@ -12,6 +12,11 @@ import type {
   VisualTurnStats,
 } from "./visualTypes.js";
 
+const AUDIO_ACTIVE_LEVEL = 0.008;
+const AUDIO_QUIET_PAUSE_MS = 600;
+const AUDIO_QUIET_FINALIZE_MS = 1600;
+const MOUTH_ACTIVE_SIGNAL = 0.025;
+
 export interface TurnRunnerOptions {
   session: ConvaiVisualSession;
   renderer: LowPolyFaceRenderer;
@@ -32,6 +37,14 @@ export class TurnRunner {
     const results: VisualTurnResult[] = [];
     for (let i = 0; i < prompts.length; i++) {
       if (this.opts.signal?.aborted) break;
+      if (i > 0) {
+        // Cancel any lingering response from the previous turn at the SDK level,
+        // then let the trailing turn_end / speakingChange / messagesChange events
+        // fire into the now-null sink before we install the new turn's listeners.
+        this.opts.session.interrupt();
+        await wait(500);
+        if (this.opts.signal?.aborted) break;
+      }
       const result = await this.runOne(prompts[i]!, i + 1);
       results.push(result);
       if (result.error === "visual lipsync run canceled") break;
@@ -41,7 +54,7 @@ export class TurnRunner {
 
   private async runOne(prompt: VisualPrompt, turnIndex: number): Promise<VisualTurnResult> {
     if (this.opts.signal?.aborted) throw new Error("visual lipsync run canceled");
-    this.opts.renderer.resetMouth();
+    this.opts.renderer.hardResetMouth();
     this.opts.onTurnStart?.(turnIndex, prompt.text);
     const startedAt = performance.now();
     const capture: VisualTurnCapture = {
@@ -70,11 +83,21 @@ export class TurnRunner {
     let lastBlendshape = 0;
     let lastSnapshot = 0;
     let lastAudioScan = 0;
-    let lastFramePlay = 0;
+    let lipFrameAccumulatorMs = 0;
+    let lastLipPlaybackAt = 0;
+    let lipPlaybackStarted = false;
+    let lipsyncFramesReceived = false;
+    let lipsyncQueueDrainedLogged = false;
     let audioEverActive = false;
+    let firstAudioActive = 0;
     let lastAudioActive = 0;
     let audioQuietStopped = false;
-    let lastSpeakingFalse = -Infinity;
+    let audioQuietFinalized = false;
+    // Filter for stale events from the prior turn that the SDK keeps streaming
+    // even after we move on (especially after a timeout). Stays false until we
+    // see a clear "fresh activity" signal for THIS turn.
+    let turnActive = false;
+    this.opts.audioProbe.resetTurnStats();
     const pendingFrames: LipSyncValues[] = [];
     const snapshotCandidates: VisualSnapshot[] = [];
     const log = (name: string, atMs = performance.now(), data?: Record<string, unknown>) => {
@@ -85,54 +108,91 @@ export class TurnRunner {
     const sink: VisualSessionSink = {
       onLog: (name, atMs, data) => log(name, atMs, data),
       onSpeakingChange: (isSpeaking, atMs) => {
-        speaking = isSpeaking;
-        speakingStarted ||= isSpeaking;
         if (isSpeaking) {
+          turnActive = true;
+          speaking = true;
+          speakingStarted = true;
           capture.speakingStartMs ??= atMs - startedAt;
-          lastSpeakingFalse = -Infinity;
         } else {
+          if (!turnActive) {
+            log("ignored_stale_speaking_false", atMs);
+            return;
+          }
+          speaking = false;
           capture.speakingEndMs ??= atMs - startedAt;
-          lastSpeakingFalse = atMs;
-          // Don't clear frames yet — audio may still be draining from the LiveKit buffer.
-          // The 400ms grace window in the sampler lets lipsync finish with the audio.
+          // CRITICAL: do NOT clear pendingFrames here. The SDK delivers blendshapes
+          // ahead of LiveKit audio playback, so frames in the queue correspond to
+          // audio still draining from the buffer. Cleanup happens only after a
+          // recoverable audio-quiet pause has stayed quiet long enough to finalize.
           log("speaking_stopped", atMs, { pendingFrames: pendingFrames.length });
         }
         lastActivity = atMs;
       },
       onBlendshapeChunk: (frameCount, atMs) => {
+        turnActive = true;
+        if (audioQuietStopped || audioQuietFinalized) {
+          audioQuietStopped = false;
+          audioQuietFinalized = false;
+          log("lipsync_resumed_on_new_blendshapes", atMs, { frameCount, pendingFrames: pendingFrames.length });
+        }
         capture.blendshapeChunkCount += 1;
         capture.blendshapeFrameCount += frameCount;
         lastBlendshape = atMs;
-        const withinGrace = !speaking && lastSpeakingFalse !== -Infinity && atMs - lastSpeakingFalse < 400;
-        if (!audioQuietStopped && (speaking || withinGrace)) lastActivity = atMs;
+        if (!audioQuietStopped) lastActivity = atMs;
       },
       onBlendshapeFrames: (values, atMs) => {
-        const withinGrace = !speaking && lastSpeakingFalse !== -Infinity && atMs - lastSpeakingFalse < 400;
-        if (!audioQuietStopped && (speaking || withinGrace)) pendingFrames.push(...values);
-        lastBlendshape = atMs;
-      },
-      onBlendshapeFrame: (values: LipSyncValues, atMs) => {
-        if (!speaking && pendingFrames.length === 0) this.opts.renderer.setLipValues(values);
+        if (!turnActive) {
+          log("ignored_stale_blendshape_frames", atMs, { frameCount: values.length });
+          return;
+        }
+        pendingFrames.push(...values);
+        lipsyncFramesReceived ||= values.length > 0;
         lastBlendshape = atMs;
       },
       onBlendshapeStats: (stats: VisualTurnStats | undefined, atMs) => {
+        if (!turnActive) {
+          log("ignored_stale_stats", atMs);
+          return;
+        }
         capture.turnStats = stats;
         capture.statsReceivedMs = atMs - startedAt;
         statsReceived = true;
         lastActivity = atMs;
       },
       onTurnEnd: (atMs) => {
+        if (!turnActive) {
+          log("ignored_stale_turn_end", atMs);
+          return;
+        }
         turnEnded = true;
         capture.turnEndMs = atMs - startedAt;
         lastActivity = atMs;
       },
       onNoResponse: (atMs) => {
+        // Legitimate "bot had no response" — counts as activation since it's an
+        // authoritative signal from the SDK for this turn.
+        turnActive = true;
         noResponse = true;
         turnEnded = true;
         capture.turnEndMs = atMs - startedAt;
         lastActivity = atMs;
       },
       onResponseText: (text, streaming, atMs) => {
+        // The SDK's messagesChange replays the full message list, which can include
+        // the previous turn's final text. The "fresh turn" signal is streaming=true
+        // with chars=0 (the streamed response is just starting), or any text once
+        // turnActive has been latched by another handler.
+        if (!turnActive) {
+          if (streaming && text.length === 0) {
+            turnActive = true;
+            capture.responseText = text;
+            responseStreaming = streaming;
+            lastActivity = atMs;
+          } else {
+            log("ignored_stale_response_text", atMs, { chars: text.length, streaming });
+          }
+          return;
+        }
         capture.responseText = text;
         responseStreaming = streaming;
         lastActivity = atMs;
@@ -153,51 +213,108 @@ export class TurnRunner {
         lastAudioScan = now;
       }
       const audioLevel = this.opts.audioProbe.getLevel();
-      if (audioLevel > 0.008) {
+      if (audioLevel > AUDIO_ACTIVE_LEVEL) {
+        const resumedAfterQuiet = audioQuietStopped || audioQuietFinalized;
+        if (!audioEverActive) firstAudioActive = now;
         audioEverActive = true;
         lastAudioActive = now;
         audioQuietStopped = false;
+        audioQuietFinalized = false;
+        if (resumedAfterQuiet) {
+          log("lipsync_resumed_after_audio_quiet", now, {
+            pendingFrames: pendingFrames.length,
+            audioLevel,
+          });
+        }
       }
       const audioQuietFor = audioEverActive ? now - lastAudioActive : 0;
-      // 600ms threshold avoids triggering during natural inter-sentence pauses (~300ms).
-      const shouldStopForQuietAudio =
-        speaking && audioEverActive && audioQuietFor >= 600 && (pendingFrames.length > 0 || this.opts.renderer.getMouthSignal() > 0.025);
-      if (shouldStopForQuietAudio && !audioQuietStopped) {
-        const dropped = clearPendingLipsyncFrames(pendingFrames);
+      // Short quiet gaps are common inside a generated response. Pause the mouth
+      // without dropping queued frames, then only discard them after sustained
+      // quiet once the turn has otherwise completed.
+      const expectedAudioDurationMs = capture.turnStats?.total_audio_duration_ms;
+      const audioPlaybackElapsedMs = firstAudioActive > 0 ? now - firstAudioActive : 0;
+      const expectedAudioDrained =
+        expectedAudioDurationMs === undefined || audioPlaybackElapsedMs >= expectedAudioDurationMs;
+      const canFinalizeQuietLipsync =
+        expectedAudioDrained &&
+        (noResponse || turnEnded || (statsReceived && speakingStarted && !speaking && !responseStreaming));
+      const quietAction = getAudioQuietLipsyncAction({
+        audioEverActive,
+        audioQuietForMs: audioQuietFor,
+        pendingFrames: pendingFrames.length,
+        mouthSignal: this.opts.renderer.getMouthSignal(),
+        paused: audioQuietStopped,
+        turnComplete: canFinalizeQuietLipsync,
+      });
+      if (quietAction === "pause") {
         this.opts.renderer.resetMouth();
         audioQuietStopped = true;
-        log("lipsync_stopped_on_audio_quiet", now, {
-          droppedPendingFrames: dropped,
+        log("lipsync_paused_on_audio_quiet", now, {
+          pendingFrames: pendingFrames.length,
           audioQuietForMs: Math.round(audioQuietFor),
           audioLevel,
         });
-      }
-      // Allow consuming frames for 400ms after speakingChange:false so the LiveKit audio
-      // buffer drains in sync with lipsync, then clean up whatever remains.
-      const withinSpeakingGrace = !speaking && lastSpeakingFalse !== -Infinity && now - lastSpeakingFalse < 400;
-      const frameInterval = capture.turnStats?.fps ? 1000 / capture.turnStats.fps : 1000 / 60;
-      if (
-        shouldConsumeLipsyncFrame({
-          speaking: (speaking || withinSpeakingGrace) && !audioQuietStopped,
-          pendingFrames: pendingFrames.length,
-          elapsedSinceLastFrameMs: now - lastFramePlay,
-          frameIntervalMs: frameInterval,
-        })
-      ) {
-        const next = pendingFrames.shift();
-        if (next) {
-          this.opts.renderer.setLipValues(next);
-          capture.playedBlendshapeFrameCount += 1;
-          lastFramePlay = now;
-        }
-      }
-      if (!speaking && lastSpeakingFalse !== -Infinity && now - lastSpeakingFalse >= 400 && pendingFrames.length > 0) {
+      } else if (quietAction === "finalize") {
         const dropped = clearPendingLipsyncFrames(pendingFrames);
         this.opts.renderer.resetMouth();
-        lastSpeakingFalse = -Infinity;
-        log("lipsync_stopped_grace_expired", now, { droppedPendingFrames: dropped });
+        audioQuietStopped = true;
+        audioQuietFinalized = true;
+        log("lipsync_finalized_on_audio_quiet", now, {
+          droppedPendingFrames: dropped,
+          audioQuietForMs: Math.round(audioQuietFor),
+          audioPlaybackElapsedMs: Math.round(audioPlaybackElapsedMs),
+          expectedAudioDurationMs,
+          audioLevel,
+        });
       }
-      if (speakingStarted && !speaking && pendingFrames.length === 0) {
+      const frameInterval = capture.turnStats?.fps ? 1000 / capture.turnStats.fps : 1000 / 60;
+      // Consume whenever there are frames and audio hasn't ended. This drains the
+      // LiveKit audio-buffer's worth of pre-delivered blendshapes in sync with playback,
+      // regardless of speaking_change toggles.
+      if (!audioQuietStopped && !audioQuietFinalized && pendingFrames.length > 0) {
+        if (!lipPlaybackStarted) {
+          lipPlaybackStarted = true;
+          lastLipPlaybackAt = now;
+          lipFrameAccumulatorMs = 0;
+          log("lipsync_playback_started", now, {
+            frameIntervalMs: frameInterval,
+            pendingFrames: pendingFrames.length,
+            fps: capture.turnStats?.fps ?? 60,
+          });
+        } else {
+          const drain = computeLipsyncDrainCount({
+            accumulatorMs: lipFrameAccumulatorMs,
+            elapsedMs: now - lastLipPlaybackAt,
+            frameIntervalMs: frameInterval,
+            pendingFrames: pendingFrames.length,
+          });
+          lipFrameAccumulatorMs = drain.nextAccumulatorMs;
+          lastLipPlaybackAt = now;
+          let latest: LipSyncValues | null = null;
+          let drained = 0;
+          while (drained < drain.frameCount && pendingFrames.length > 0) {
+            latest = pendingFrames.shift() ?? null;
+            drained += 1;
+          }
+          if (latest) {
+            this.opts.renderer.setLipValues(latest);
+            capture.playedBlendshapeFrameCount += drained;
+          }
+          if (lipsyncFramesReceived && !lipsyncQueueDrainedLogged && pendingFrames.length === 0) {
+            lipsyncQueueDrainedLogged = true;
+            log("lipsync_queue_drained", now, {
+              playedFrames: capture.playedBlendshapeFrameCount,
+              audioLevel,
+              audioQuietForMs: Math.round(audioQuietFor),
+              audioPlaybackElapsedMs: Math.round(audioPlaybackElapsedMs),
+              lipFrameAccumulatorMs: Math.round(lipFrameAccumulatorMs * 1000) / 1000,
+            });
+          }
+        }
+      } else if (lipPlaybackStarted) {
+        lastLipPlaybackAt = now;
+      }
+      if (speakingStarted && !speaking && pendingFrames.length === 0 && (audioQuietStopped || audioQuietFinalized)) {
         this.opts.renderer.resetMouth();
       }
       const sample = this.opts.renderer.makeSample(tMs, audioLevel);
@@ -226,7 +343,8 @@ export class TurnRunner {
         const now = performance.now();
         const quietFor = now - lastActivity;
         const blendshapeDrained =
-          audioQuietStopped ||
+          audioQuietFinalized ||
+          (audioQuietStopped && pendingFrames.length === 0) ||
           (statsReceived && pendingFrames.length === 0) ||
           (capture.blendshapeFrameCount > 0 && pendingFrames.length === 0 && now - lastBlendshape > 800) ||
           (turnEnded && pendingFrames.length === 0 && now - lastBlendshape > 800);
@@ -279,6 +397,11 @@ export class TurnRunner {
         error: capture.error,
         blendshapeFrames: capture.blendshapeFrameCount,
         playedBlendshapeFrames: capture.playedBlendshapeFrameCount,
+        pendingFrames: pendingFrames.length,
+        lipFrameAccumulatorMs: Math.round(lipFrameAccumulatorMs * 1000) / 1000,
+        lipPlaybackStarted,
+        audioQuietStopped,
+        audioQuietFinalized,
         audioDebug: capture.audioDebug,
       });
       this.opts.session.setSink(null);
@@ -310,6 +433,40 @@ export function clearPendingLipsyncFrames(queue: unknown[]): number {
   const dropped = queue.length;
   queue.length = 0;
   return dropped;
+}
+
+export function computeLipsyncDrainCount(opts: {
+  accumulatorMs: number;
+  elapsedMs: number;
+  frameIntervalMs: number;
+  pendingFrames: number;
+}): { frameCount: number; nextAccumulatorMs: number } {
+  if (opts.pendingFrames <= 0 || opts.frameIntervalMs <= 0) {
+    return { frameCount: 0, nextAccumulatorMs: 0 };
+  }
+  const accumulatedMs = Math.max(0, opts.accumulatorMs) + Math.max(0, opts.elapsedMs);
+  const elapsedFrameCount = Math.floor(accumulatedMs / opts.frameIntervalMs);
+  const frameCount = Math.min(opts.pendingFrames, elapsedFrameCount);
+  if (frameCount === opts.pendingFrames) {
+    return { frameCount, nextAccumulatorMs: 0 };
+  }
+  return { frameCount, nextAccumulatorMs: accumulatedMs - frameCount * opts.frameIntervalMs };
+}
+
+export function getAudioQuietLipsyncAction(opts: {
+  audioEverActive: boolean;
+  audioQuietForMs: number;
+  pendingFrames: number;
+  mouthSignal: number;
+  paused: boolean;
+  turnComplete: boolean;
+}): "none" | "pause" | "finalize" {
+  if (!opts.audioEverActive) return "none";
+  const hasLipsyncWork = opts.pendingFrames > 0 || opts.mouthSignal > MOUTH_ACTIVE_SIGNAL;
+  if (!hasLipsyncWork) return "none";
+  if (opts.turnComplete && opts.audioQuietForMs >= AUDIO_QUIET_FINALIZE_MS) return "finalize";
+  if (!opts.paused && opts.audioQuietForMs >= AUDIO_QUIET_PAUSE_MS) return "pause";
+  return "none";
 }
 
 export function shouldConsumeLipsyncFrame(opts: {

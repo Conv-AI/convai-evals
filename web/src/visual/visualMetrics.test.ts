@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { computeVisualMetrics } from "./visualMetrics.js";
-import { clearPendingLipsyncFrames, runSequentialTasks, shouldConsumeLipsyncFrame } from "./TurnRunner.js";
+import {
+  clearPendingLipsyncFrames,
+  computeLipsyncDrainCount,
+  getAudioQuietLipsyncAction,
+  runSequentialTasks,
+  shouldConsumeLipsyncFrame,
+} from "./TurnRunner.js";
 import type { VisualTimelineSample, VisualTurnCapture } from "./visualTypes.js";
 
 function makeCapture(partial: Partial<VisualTurnCapture>): VisualTurnCapture {
@@ -143,9 +149,115 @@ function envelope(t: number, start: number, end: number): number {
 }
 
 {
+  const frameIntervalMs = 1000 / 60;
+  let state = computeLipsyncDrainCount({
+    accumulatorMs: 0,
+    elapsedMs: 0,
+    frameIntervalMs,
+    pendingFrames: 100,
+  });
+  assert.equal(state.frameCount, 0);
+  assert.equal(state.nextAccumulatorMs, 0);
+
+  state = computeLipsyncDrainCount({
+    accumulatorMs: state.nextAccumulatorMs,
+    elapsedMs: 66,
+    frameIntervalMs,
+    pendingFrames: 100,
+  });
+  assert.equal(state.frameCount, 3);
+
+  state = computeLipsyncDrainCount({
+    accumulatorMs: state.nextAccumulatorMs,
+    elapsedMs: 66,
+    frameIntervalMs,
+    pendingFrames: 97,
+  });
+  assert.equal(state.frameCount, 4);
+}
+
+{
+  const frameIntervalMs = 1000 / 60;
+  const jitteryIntervals = [67, 76, 58, 70, 66, 74, 63, 69, 66, 75, 59, 71];
+  let accumulatorMs = 0;
+  let playedFrames = 0;
+  let elapsedMs = 0;
+  for (const interval of jitteryIntervals) {
+    elapsedMs += interval;
+    const drain = computeLipsyncDrainCount({
+      accumulatorMs,
+      elapsedMs: interval,
+      frameIntervalMs,
+      pendingFrames: 1000 - playedFrames,
+    });
+    playedFrames += drain.frameCount;
+    accumulatorMs = drain.nextAccumulatorMs;
+  }
+  assert.equal(playedFrames, Math.floor(elapsedMs / frameIntervalMs));
+}
+
+{
+  const drain = computeLipsyncDrainCount({
+    accumulatorMs: 0,
+    elapsedMs: 1000,
+    frameIntervalMs: 1000 / 60,
+    pendingFrames: 5,
+  });
+  assert.equal(drain.frameCount, 5);
+  assert.equal(drain.nextAccumulatorMs, 0);
+}
+
+{
   const queue = [{ jawOpen: 1 }, { jawOpen: 0.5 }, { jawOpen: 0.2 }];
   assert.equal(clearPendingLipsyncFrames(queue), 3);
   assert.deepEqual(queue, []);
+}
+
+{
+  assert.equal(
+    getAudioQuietLipsyncAction({
+      audioEverActive: true,
+      audioQuietForMs: 700,
+      pendingFrames: 24,
+      mouthSignal: 0,
+      paused: false,
+      turnComplete: true,
+    }),
+    "pause",
+  );
+  assert.equal(
+    getAudioQuietLipsyncAction({
+      audioEverActive: true,
+      audioQuietForMs: 700,
+      pendingFrames: 24,
+      mouthSignal: 0,
+      paused: true,
+      turnComplete: true,
+    }),
+    "none",
+  );
+  assert.equal(
+    getAudioQuietLipsyncAction({
+      audioEverActive: true,
+      audioQuietForMs: 1700,
+      pendingFrames: 24,
+      mouthSignal: 0,
+      paused: true,
+      turnComplete: true,
+    }),
+    "finalize",
+  );
+  assert.equal(
+    getAudioQuietLipsyncAction({
+      audioEverActive: true,
+      audioQuietForMs: 1700,
+      pendingFrames: 24,
+      mouthSignal: 0,
+      paused: true,
+      turnComplete: false,
+    }),
+    "none",
+  );
 }
 
 console.log("visual lipsync metric tests passed");

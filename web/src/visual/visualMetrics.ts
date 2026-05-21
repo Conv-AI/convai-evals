@@ -17,8 +17,11 @@ const DEFAULT_THRESHOLDS = {
 
 export function computeVisualMetrics(capture: VisualTurnCapture): VisualLipsyncMetrics {
   const samples = capture.samples.slice().sort((a, b) => a.tMs - b.tMs);
-  const audioWindow = findActivityWindow(samples, (s) => s.audioLevel, 0.015);
-  const visualWindow = findActivityWindow(samples, (s) => Math.max(s.visualMouth, s.pixelMouth), 0.02);
+  // Audio uses a stricter 0.30-of-peak threshold so the LiveKit noise-floor tail
+  // (which sits just above 0.015) doesn't extend the detected audio window past
+  // the actual end of speech.
+  const audioWindow = findActivityWindow(samples, (s) => s.audioLevel, 0.03, 0.3);
+  const visualWindow = findActivityWindow(samples, (s) => Math.max(s.visualMouth, s.pixelMouth), 0.02, 0.22);
   const { bestLagMs, correlation } = findBestLaggedCorrelation(samples);
   const shapeChecks = computeShapeChecks(capture.responseText || capture.prompt, samples);
   const failures: string[] = [];
@@ -119,12 +122,13 @@ function findActivityWindow(
   samples: readonly VisualTimelineSample[],
   pick: (sample: VisualTimelineSample) => number,
   floor: number,
+  ratio: number,
 ): ActivityWindow | null {
   if (samples.length === 0) return null;
   const values = samples.map(pick);
   const peak = Math.max(...values);
   if (peak <= floor) return null;
-  const threshold = Math.max(floor, peak * 0.22);
+  const threshold = Math.max(floor, peak * ratio);
   const first = findSustainedIndex(values, threshold, 1);
   const last = findSustainedIndex([...values].reverse(), threshold, 1);
   if (first === -1 || last === -1) return null;

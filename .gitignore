@@ -17,3 +17,4 @@ rtvi-messages-*.json
 .idea/
 .claude/
 dev.bat
+handoff_docs/
