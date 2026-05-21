@@ -198,6 +198,7 @@ export function ReportView({ report }: Props): JSX.Element {
             <th>test_id</th>
             <th>session</th>
             <th>kind</th>
+            <th>resolved</th>
             <th>expected</th>
             <th>observed</th>
             <th>failure</th>
@@ -225,6 +226,18 @@ export function ReportView({ report }: Props): JSX.Element {
                     <code>{r.session_id}</code>
                   </td>
                   <td>{r.input_kind}</td>
+                  <td>
+                    {r.resolved_expectation ? (
+                      <span
+                        className={`badge ${resolvedBadgeClass(r.resolved_expectation.category)}`}
+                        title={r.resolved_expectation.resolution}
+                      >
+                        {r.resolved_expectation.category}
+                      </span>
+                    ) : (
+                      <span className="muted">—</span>
+                    )}
+                  </td>
                   <td>{r.expected.behavior}</td>
                   <td>{r.structure_match.observed_behavior}</td>
                   <td>
@@ -254,7 +267,7 @@ export function ReportView({ report }: Props): JSX.Element {
                 </tr>
                 {isOpen && (
                   <tr>
-                    <td colSpan={12}>
+                    <td colSpan={13}>
                       <RowDetailPanel row={r} />
                     </td>
                   </tr>
@@ -280,6 +293,18 @@ function RowDetailPanel({ row }: { row: PerRowResult }): JSX.Element {
         <h4>Failure rationale</h4>
         <p style={{ margin: 0 }}>{rationale}</p>
       </div>
+
+      {row.resolved_expectation && (
+        <div className="row-detail-section">
+          <h4>Received state &amp; resolved directive</h4>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8, fontSize: 12 }}>
+            <IdCell label="run_llm" value={row.resolved_expectation.run_llm} />
+            <IdCell label="resolved_to" value={`${row.resolved_expectation.category} (${row.resolved_expectation.resolution})`} />
+            <IdCell label="bot_busy_when_received" value={String(row.resolved_expectation.bot_busy)} />
+            <IdCell label="user_speaking_when_received" value={String(row.resolved_expectation.user_speaking)} />
+          </div>
+        </div>
+      )}
 
       <div className="row-detail-section">
         <h4>Backend identifiers</h4>
@@ -559,6 +584,19 @@ function IdCell({ label, value }: { label: string; value: string | undefined }):
       <code style={{ wordBreak: "break-all" }}>{v}</code>
     </div>
   );
+}
+
+function resolvedBadgeClass(category: string): string {
+  switch (category) {
+    case "respond":
+      return "badge-pass";
+    case "silent":
+      return "badge-info";
+    case "discretionary":
+      return "badge-warn";
+    default:
+      return "badge-info";
+  }
 }
 
 function failureBadgeClass(r: FailureReason): string {

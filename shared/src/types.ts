@@ -145,6 +145,29 @@ export interface TurnTrace {
   tags?: Record<string, unknown>;
 }
 
+/** Bot/user state the system was in at the instant an input was received.
+ * Captured client-side from the SDK event stream at dispatch time. */
+export interface ReceivedState {
+  /** A prior bot response was speaking or generating when this input arrived. */
+  bot_busy: boolean;
+  /** A user utterance (voice) was in flight when this input arrived. */
+  user_speaking: boolean;
+}
+
+/** Coarse scoring category once the run_llm directive is resolved against the state. */
+export type ResolvedDirective = "respond" | "silent" | "discretionary";
+
+/** What the run_llm directive resolves to given the bot/user state when received.
+ * Mirrors core-service Dynamic Context V2 gating (commit #517). */
+export interface ResolvedExpectation {
+  run_llm: RunLlm | "n/a";
+  bot_busy: boolean;
+  user_speaking: boolean;
+  category: ResolvedDirective;
+  /** Human-readable label for how the directive was interpreted given the state. */
+  resolution: string;
+}
+
 export interface RowObservation {
   test_id: string;
   session_id: string;
@@ -152,6 +175,10 @@ export interface RowObservation {
   input_kind: InputKind;
   timestamps: RowTimestamps;
   events: CapturedEvent[];
+  /** State the system was in when this input was received (client-side snapshot). */
+  received_state?: ReceivedState;
+  /** What the run_llm directive resolved to given received_state (the V2 matrix). */
+  resolved_expectation?: ResolvedExpectation;
   bot_transcript?: string;
   user_transcript?: string;
   llm_called: boolean;
@@ -243,6 +270,10 @@ export interface PerRowResult {
   was_canceled?: boolean;
   interrupted_by_priority_event?: boolean;
   dispatched_mid_turn?: boolean;
+  /** State the system was in when this input was received (client-side snapshot). */
+  received_state?: ReceivedState;
+  /** What the run_llm directive resolved to given received_state (the V2 matrix). */
+  resolved_expectation?: ResolvedExpectation;
   failure_reason: FailureReason;
   diagnostics?: DiagnosticsSummary;
 }
