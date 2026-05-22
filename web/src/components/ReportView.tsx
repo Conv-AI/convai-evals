@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState, useCallback } from "react";
+import { Fragment, useMemo, useState } from "react";
 import {
   isFailureReasonFailure,
   type DiagnosticsSummary,
@@ -411,42 +411,7 @@ function RowDetailPanel({ row }: { row: PerRowResult }): JSX.Element {
   );
 }
 
-interface AnalyticsApiResult {
-  endpoint: string;
-  status: number;
-  ok: boolean;
-  body?: unknown;
-  error?: string;
-}
-interface DiagBundle {
-  analytics_api: {
-    session?: AnalyticsApiResult;
-    interaction?: AnalyticsApiResult;
-    skipped?: string;
-  };
-  fetch_meta?: { fetch_duration_ms: number; errors: string[] };
-}
-
 function DiagnosticsPanel({ diag }: { diag: DiagnosticsSummary }): JSX.Element {
-  const [bundle, setBundle] = useState<DiagBundle | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [bundleOpen, setBundleOpen] = useState(false);
-
-  const loadBundle = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const res = await fetch(`/api/diagnostics/bundle?path=${encodeURIComponent(diag.bundle_path)}`);
-      if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
-      setBundle(await res.json() as DiagBundle);
-    } catch (e) {
-      setLoadError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, [diag.bundle_path]);
-
   if (diag.skipped) {
     return (
       <>
@@ -459,46 +424,13 @@ function DiagnosticsPanel({ diag }: { diag: DiagnosticsSummary }): JSX.Element {
   return (
     <>
       <h4 style={{ marginBottom: 8 }}>Diagnostics</h4>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <span className="badge badge-neutral">{diag.provider}</span>
         <span className="badge badge-neutral">{diag.item_count} lookups</span>
         {diag.warning_count > 0 && <span className="badge badge-warn">{diag.warning_count} warnings</span>}
         {diag.error_count > 0 && <span className="badge badge-fail">{diag.error_count} errors</span>}
         {diag.errors?.map((e, i) => <span key={i} className="badge badge-fail">{e}</span>)}
-        {!bundle && !loading && (
-          <button style={{ fontSize: 12, padding: "2px 10px" }} onClick={() => { void loadBundle(); }}>
-            Load logs
-          </button>
-        )}
-        {loading && <span className="muted small">loading…</span>}
-        {loadError && <span className="badge badge-fail">fetch error: {loadError}</span>}
       </div>
-
-      {bundle && (
-        <div style={{ fontSize: 12 }}>
-          {bundle.fetch_meta?.errors && bundle.fetch_meta.errors.length > 0 && (
-            <div style={{ marginBottom: 6 }}>
-              {bundle.fetch_meta.errors.map((e, i) => (
-                <div key={i} className="badge badge-fail" style={{ marginRight: 4 }}>{e}</div>
-              ))}
-            </div>
-          )}
-
-          <div style={{ marginBottom: 6 }}>
-            <button
-              style={{ fontSize: 12, padding: "2px 10px", marginRight: 8 }}
-              onClick={() => setBundleOpen((o) => !o)}
-            >
-              {bundleOpen ? "▼" : "▶"} Analytics API payload
-            </button>
-          </div>
-          {bundleOpen && (
-            <div style={{ maxHeight: 360, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 4, marginBottom: 8 }}>
-              <pre style={{ whiteSpace: "pre-wrap", margin: 0 }}>{JSON.stringify(bundle.analytics_api, null, 2)}</pre>
-            </div>
-          )}
-        </div>
-      )}
     </>
   );
 }
