@@ -25,7 +25,6 @@ Open a terminal, go to the folder where you want the tool, and run these command
 # get the code
 git clone https://github.com/Conv-AI/convai-evals.git
 cd convai-evals
-git checkout feat/state-aware-context-eval
 
 # install and build (takes a few minutes the first time)
 npm install
