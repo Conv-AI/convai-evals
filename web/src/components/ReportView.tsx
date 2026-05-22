@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState, useCallback } from "react";
+import { Fragment, useMemo, useState } from "react";
 import {
   isFailureReasonFailure,
   type DiagnosticsSummary,
@@ -198,6 +198,7 @@ export function ReportView({ report }: Props): JSX.Element {
             <th>test_id</th>
             <th>session</th>
             <th>kind</th>
+            <th>resolved</th>
             <th>expected</th>
             <th>observed</th>
             <th>failure</th>
@@ -225,6 +226,18 @@ export function ReportView({ report }: Props): JSX.Element {
                     <code>{r.session_id}</code>
                   </td>
                   <td>{r.input_kind}</td>
+                  <td>
+                    {r.resolved_expectation ? (
+                      <span
+                        className={`badge ${resolvedBadgeClass(r.resolved_expectation.category)}`}
+                        title={r.resolved_expectation.resolution}
+                      >
+                        {r.resolved_expectation.category}
+                      </span>
+                    ) : (
+                      <span className="muted">—</span>
+                    )}
+                  </td>
                   <td>{r.expected.behavior}</td>
                   <td>{r.structure_match.observed_behavior}</td>
                   <td>
@@ -254,7 +267,7 @@ export function ReportView({ report }: Props): JSX.Element {
                 </tr>
                 {isOpen && (
                   <tr>
-                    <td colSpan={12}>
+                    <td colSpan={13}>
                       <RowDetailPanel row={r} />
                     </td>
                   </tr>
@@ -280,6 +293,18 @@ function RowDetailPanel({ row }: { row: PerRowResult }): JSX.Element {
         <h4>Failure rationale</h4>
         <p style={{ margin: 0 }}>{rationale}</p>
       </div>
+
+      {row.resolved_expectation && (
+        <div className="row-detail-section">
+          <h4>Received state &amp; resolved directive</h4>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8, fontSize: 12 }}>
+            <IdCell label="run_llm" value={row.resolved_expectation.run_llm} />
+            <IdCell label="resolved_to" value={`${row.resolved_expectation.category} (${row.resolved_expectation.resolution})`} />
+            <IdCell label="bot_busy_when_received" value={String(row.resolved_expectation.bot_busy)} />
+            <IdCell label="user_speaking_when_received" value={String(row.resolved_expectation.user_speaking)} />
+          </div>
+        </div>
+      )}
 
       <div className="row-detail-section">
         <h4>Backend identifiers</h4>
@@ -386,42 +411,7 @@ function RowDetailPanel({ row }: { row: PerRowResult }): JSX.Element {
   );
 }
 
-interface AnalyticsApiResult {
-  endpoint: string;
-  status: number;
-  ok: boolean;
-  body?: unknown;
-  error?: string;
-}
-interface DiagBundle {
-  analytics_api: {
-    session?: AnalyticsApiResult;
-    interaction?: AnalyticsApiResult;
-    skipped?: string;
-  };
-  fetch_meta?: { fetch_duration_ms: number; errors: string[] };
-}
-
 function DiagnosticsPanel({ diag }: { diag: DiagnosticsSummary }): JSX.Element {
-  const [bundle, setBundle] = useState<DiagBundle | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [bundleOpen, setBundleOpen] = useState(false);
-
-  const loadBundle = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const res = await fetch(`/api/diagnostics/bundle?path=${encodeURIComponent(diag.bundle_path)}`);
-      if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
-      setBundle(await res.json() as DiagBundle);
-    } catch (e) {
-      setLoadError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, [diag.bundle_path]);
-
   if (diag.skipped) {
     return (
       <>
@@ -434,46 +424,13 @@ function DiagnosticsPanel({ diag }: { diag: DiagnosticsSummary }): JSX.Element {
   return (
     <>
       <h4 style={{ marginBottom: 8 }}>Diagnostics</h4>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <span className="badge badge-neutral">{diag.provider}</span>
         <span className="badge badge-neutral">{diag.item_count} lookups</span>
         {diag.warning_count > 0 && <span className="badge badge-warn">{diag.warning_count} warnings</span>}
         {diag.error_count > 0 && <span className="badge badge-fail">{diag.error_count} errors</span>}
         {diag.errors?.map((e, i) => <span key={i} className="badge badge-fail">{e}</span>)}
-        {!bundle && !loading && (
-          <button style={{ fontSize: 12, padding: "2px 10px" }} onClick={() => { void loadBundle(); }}>
-            Load logs
-          </button>
-        )}
-        {loading && <span className="muted small">loading…</span>}
-        {loadError && <span className="badge badge-fail">fetch error: {loadError}</span>}
       </div>
-
-      {bundle && (
-        <div style={{ fontSize: 12 }}>
-          {bundle.fetch_meta?.errors && bundle.fetch_meta.errors.length > 0 && (
-            <div style={{ marginBottom: 6 }}>
-              {bundle.fetch_meta.errors.map((e, i) => (
-                <div key={i} className="badge badge-fail" style={{ marginRight: 4 }}>{e}</div>
-              ))}
-            </div>
-          )}
-
-          <div style={{ marginBottom: 6 }}>
-            <button
-              style={{ fontSize: 12, padding: "2px 10px", marginRight: 8 }}
-              onClick={() => setBundleOpen((o) => !o)}
-            >
-              {bundleOpen ? "▼" : "▶"} Analytics API payload
-            </button>
-          </div>
-          {bundleOpen && (
-            <div style={{ maxHeight: 360, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 4, marginBottom: 8 }}>
-              <pre style={{ whiteSpace: "pre-wrap", margin: 0 }}>{JSON.stringify(bundle.analytics_api, null, 2)}</pre>
-            </div>
-          )}
-        </div>
-      )}
     </>
   );
 }
@@ -559,6 +516,19 @@ function IdCell({ label, value }: { label: string; value: string | undefined }):
       <code style={{ wordBreak: "break-all" }}>{v}</code>
     </div>
   );
+}
+
+function resolvedBadgeClass(category: string): string {
+  switch (category) {
+    case "respond":
+      return "badge-pass";
+    case "silent":
+      return "badge-info";
+    case "discretionary":
+      return "badge-warn";
+    default:
+      return "badge-info";
+  }
 }
 
 function failureBadgeClass(r: FailureReason): string {

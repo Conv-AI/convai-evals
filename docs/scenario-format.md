@@ -13,6 +13,6 @@ Expectations are intentionally generic:
 - `required_events`: SDK event names that should appear
 - `semantic_judge`: optional rubric for agentic scoring
 
-Domain-specific information belongs in `metadata`. This keeps the public repo input-dataset agnostic while still supporting workload shapes such as long sessions, mixed voice/text input, dynamic-context state changes, and preview/prod comparisons.
+Domain-specific information belongs in `metadata`. This keeps the repo input-dataset agnostic while still supporting workload shapes such as long sessions, mixed voice/text input, dynamic-context state changes, and concurrent load comparisons.
 
 `respond` is treated as the legacy alias for `respond_with_audio`. `abstain` means no audible response and passes whether the server reached silence through a silent LLM result or by skipping the LLM entirely.

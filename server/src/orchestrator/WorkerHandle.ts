@@ -245,7 +245,7 @@ function applyEventToObservation(obs: RowObservation, ev: CapturedEvent): void {
       break;
     case "botOutput":
       obs.timestamps.t_first_bot_output ??= ev.ts;
-      // The public SDK 1.3.x does not emit botRespondingChange; any of botOutput,
+      // @convai/web-sdk 1.3.x does not emit botRespondingChange; any of botOutput,
       // botTtsStarted, or speakingChange:true is unambiguous evidence that the
       // server invoked the LLM for this turn.
       obs.llm_called = true;
@@ -299,6 +299,17 @@ function applyEventToObservation(obs: RowObservation, ev: CapturedEvent): void {
       obs.interrupted_by_priority_event = true;
       if (obs.correlation) obs.correlation.attribution.response = "priority_preemption";
       break;
+    case "received_state": {
+      // Snapshot of the bot/user state when the system received this input, plus the
+      // run_llm directive resolved against that state (Dynamic Context V2 matrix).
+      const d = ev.data as {
+        received_state?: RowObservation["received_state"];
+        resolved_expectation?: RowObservation["resolved_expectation"];
+      } | undefined;
+      if (d?.received_state) obs.received_state = d.received_state;
+      if (d?.resolved_expectation) obs.resolved_expectation = d.resolved_expectation;
+      break;
+    }
     case "correlation_marker": {
       obs.correlation = ev.data as RowObservation["correlation"];
       break;

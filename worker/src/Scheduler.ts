@@ -1,4 +1,5 @@
-import type { CapturedEvent, RowCorrelation, RunConfig, TestRow } from "@convai/evals-shared";
+import type { CapturedEvent, RowCorrelation, RunConfig, RunLlm, TestRow } from "@convai/evals-shared";
+import { resolveExpectation } from "@convai/evals-shared";
 import type { MicSink } from "./MicSink.js";
 import type { SdkBridge } from "./SdkBridge.js";
 import type { EventStream } from "./EventStream.js";
@@ -19,6 +20,9 @@ export class Scheduler {
   private rowDone = new Map<string, () => void>();
   private buffers = new Map<string, AudioBuffer>();
   private aborted = false;
+  // True while a Voice In utterance is being played into the synthetic mic — i.e. the
+  // "user is speaking". Used to snapshot the state the system is in when an input arrives.
+  private userSpeaking = false;
 
   constructor(private deps: SchedulerDeps) {}
 
@@ -124,6 +128,24 @@ export class Scheduler {
     // Captured BEFORE enqueueing this row so the count reflects prior in-flight turns,
     // not this one.
     const pendingBefore = this.deps.sdk.getPendingResponseIds();
+
+    // Snapshot the bot/user state the system is in at the instant this input is received,
+    // and resolve the run_llm directive against it (Dynamic Context V2 gating). `bot_busy`
+    // reflects PRIOR in-flight responses (pendingBefore is read before this row enqueues);
+    // `user_speaking` is true if a Voice In is mid-playback into the mic.
+    const received_state = { bot_busy: pendingBefore.length > 0, user_speaking: this.userSpeaking };
+    const resolved_expectation = resolveExpectation(
+      row.input_kind,
+      data.run_llm as RunLlm | undefined,
+      received_state,
+    );
+    this.deps.events.send({
+      type: "row_event",
+      session_id: this.deps.sessionId,
+      test_id: row.test_id,
+      event: { name: "received_state", ts: t, data: { received_state, resolved_expectation } },
+    });
+
     if (row.input_kind === "Dynamic Context" && (data.run_llm === "auto" || data.run_llm === undefined)) {
       const pendingCount = pendingBefore.length;
       if (pendingCount > 0) {
@@ -161,7 +183,12 @@ export class Scheduler {
         this.deps.sdk.setUserInputOwner(row.test_id);
         const buffer = this.buffers.get(row.test_id);
         if (buffer) {
-          await this.deps.mic.play(buffer);
+          this.userSpeaking = true;
+          try {
+            await this.deps.mic.play(buffer);
+          } finally {
+            this.userSpeaking = false;
+          }
           inputEndTs = performance.now();
         } else {
           const text = data.text ?? row.input_text ?? "";

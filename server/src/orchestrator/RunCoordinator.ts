@@ -284,6 +284,8 @@ function buildPerRow(row: TestRow, obs: RowObservation | undefined, config: RunC
     was_canceled: fallbackObs.was_canceled,
     interrupted_by_priority_event: fallbackObs.interrupted_by_priority_event,
     dispatched_mid_turn: fallbackObs.dispatched_mid_turn,
+    received_state: fallbackObs.received_state,
+    resolved_expectation: fallbackObs.resolved_expectation,
     failure_reason: "pass",
   };
   partial.sla_pass = rowSlaPass(partial, config.slaVoiceAnimMs, config.slaTextOutMs);

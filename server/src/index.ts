@@ -15,11 +15,6 @@ import { judge } from "./judge.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-function ensureHttps(url: string): string {
-  if (!url) return url;
-  if (/^https?:\/\//i.test(url)) return url;
-  return `https://${url}`;
-}
 const PORT = Number(process.env.PORT ?? 4000);
 const CACHE_DIR = process.env.TTS_CACHE_DIR
   ? path.resolve(process.env.TTS_CACHE_DIR)
@@ -46,21 +41,6 @@ app.get("/cache/tts/:key.wav", (req, res) => {
     return;
   }
   res.sendFile(tts.wavPathFor(key));
-});
-
-// Endpoint URL config surfaced to the UI so it doesn't need to bundle these.
-// Built-in defaults match the Convai realtime API hosts; env vars override.
-const DEFAULT_ENDPOINTS = {
-  prod: "https://realtime-api.convai.com",
-  preview: "https://realtime-api-preview.convai.com",
-  staging: "https://realtime-api-stg.convai.com",
-};
-app.get("/api/endpoints", (_req, res) => {
-  res.json({
-    prod: ensureHttps(process.env.CONVAI_ENDPOINT_PROD || DEFAULT_ENDPOINTS.prod),
-    preview: ensureHttps(process.env.CONVAI_ENDPOINT_PREVIEW || DEFAULT_ENDPOINTS.preview),
-    staging: ensureHttps(process.env.CONVAI_ENDPOINT_STAGING || DEFAULT_ENDPOINTS.staging),
-  });
 });
 
 // Serve diagnostics bundle JSON by absolute path (validated to stay inside diagnostics/).

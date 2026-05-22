@@ -67,8 +67,62 @@ function behaviorMatches(expected: ExpectedBehavior, observed: ObservedBehavior)
   }
 }
 
+/**
+ * State-aware scoring: when the worker captured the bot/user state at input time, score
+ * against the resolved run_llm directive (Dynamic Context V2 matrix) instead of the static
+ * expected_response_behavior. The three categories:
+ *   - "respond"       : bot must produce audible output (interruption counts).
+ *   - "silent"        : bot must NOT produce a new audible response on this input.
+ *   - "discretionary" : either outcome is correct (run_llm=auto, bot idle, user quiet).
+ */
+function checkStructureStateAware(
+  obs: RowObservation,
+  observed_behavior: ObservedBehavior,
+): StructureMatch {
+  const category = obs.resolved_expectation!.category;
+  const names = new Set(obs.events.map((e) => e.name));
+  const sawBotAudio = names.has("speakingChange:true");
+  const sawBotOutput = names.has("botOutput") || names.has("botTtsStarted");
+  const interrupted = observed_behavior === "interrupted_by_priority_event";
+
+  if (category === "discretionary") {
+    // run_llm=auto, bot idle, user quiet: respond OR abstain are both correct.
+    return {
+      behavior: true,
+      llm_call: true,
+      verbal: true,
+      events: true,
+      overall: true,
+      observed_behavior,
+    };
+  }
+
+  if (category === "respond") {
+    const behavior = observed_behavior === "respond_with_audio" || interrupted;
+    const verbal = obs.bot_spoke === true || interrupted;
+    const llm_call = obs.llm_called === true || interrupted;
+    const events = sawBotAudio || sawBotOutput || interrupted;
+    return { behavior, llm_call, verbal, events, overall: behavior && llm_call && verbal && events, observed_behavior };
+  }
+
+  // category === "silent": this input must not trigger a new audible response.
+  const behavior = observed_behavior === "no_call" || observed_behavior === "respond_silent";
+  const verbal = obs.bot_spoke === false;
+  const events = !sawBotAudio;
+  // llm_call is intentionally unconstrained for silent: the server legitimately reaches
+  // silence either by skipping the LLM (no_call) or via a silent LLM result.
+  return { behavior, llm_call: true, verbal, events, overall: behavior && verbal && events, observed_behavior };
+}
+
 export function checkStructure(row: TestRow, obs: RowObservation): StructureMatch {
   const observed_behavior = deriveObservedBehavior(obs);
+
+  // Prefer state-aware scoring when the worker captured the received state.
+  if (obs.resolved_expectation) {
+    return checkStructureStateAware(obs, observed_behavior);
+  }
+
+  // Legacy static scoring (no captured state, e.g. an older worker bundle).
   const behavior = behaviorMatches(row.expected_response_behavior, observed_behavior);
   const interrupted = observed_behavior === "interrupted_by_priority_event";
   const abstainViaNoCall =

@@ -23,7 +23,7 @@ export type FailureReason =
   | "connection_error";
 export type ContextMode = "append" | "replace" | "reset";
 export type RunLlm = "true" | "false" | "auto";
-export type EndpointKey = "prod" | "preview" | "staging";
+export type EndpointKey = "prod";
 export type TtsProvider = "local" | "google";
 
 export function isFailureReasonFailure(reason: FailureReason): boolean {
@@ -69,6 +69,10 @@ export interface RunConfig {
   judgeEnabled: boolean;
   judgeEveryNth: number;
   judgeApiKey?: string; // optional override for the judge provider API key env var
+  // When true, core-service emits per-turn `turn-trace` RTVI messages (server-side stage
+  // latency over the SDK data channel — no BigQuery needed). When false/omitted, only
+  // client-side metrics are captured and server-side per-stage latency would require BQ.
+  debug?: boolean;
   ttsProvider: TtsProvider;
   ttsVoiceId: string;
   ttsApiKey?: string; // optional override for the provider's API key env var
@@ -145,6 +149,29 @@ export interface TurnTrace {
   tags?: Record<string, unknown>;
 }
 
+/** Bot/user state the system was in at the instant an input was received.
+ * Captured client-side from the SDK event stream at dispatch time. */
+export interface ReceivedState {
+  /** A prior bot response was speaking or generating when this input arrived. */
+  bot_busy: boolean;
+  /** A user utterance (voice) was in flight when this input arrived. */
+  user_speaking: boolean;
+}
+
+/** Coarse scoring category once the run_llm directive is resolved against the state. */
+export type ResolvedDirective = "respond" | "silent" | "discretionary";
+
+/** What the run_llm directive resolves to given the bot/user state when received.
+ * Mirrors core-service Dynamic Context V2 gating (commit #517). */
+export interface ResolvedExpectation {
+  run_llm: RunLlm | "n/a";
+  bot_busy: boolean;
+  user_speaking: boolean;
+  category: ResolvedDirective;
+  /** Human-readable label for how the directive was interpreted given the state. */
+  resolution: string;
+}
+
 export interface RowObservation {
   test_id: string;
   session_id: string;
@@ -152,6 +179,10 @@ export interface RowObservation {
   input_kind: InputKind;
   timestamps: RowTimestamps;
   events: CapturedEvent[];
+  /** State the system was in when this input was received (client-side snapshot). */
+  received_state?: ReceivedState;
+  /** What the run_llm directive resolved to given received_state (the V2 matrix). */
+  resolved_expectation?: ResolvedExpectation;
   bot_transcript?: string;
   user_transcript?: string;
   llm_called: boolean;
@@ -243,6 +274,10 @@ export interface PerRowResult {
   was_canceled?: boolean;
   interrupted_by_priority_event?: boolean;
   dispatched_mid_turn?: boolean;
+  /** State the system was in when this input was received (client-side snapshot). */
+  received_state?: ReceivedState;
+  /** What the run_llm directive resolved to given received_state (the V2 matrix). */
+  resolved_expectation?: ResolvedExpectation;
   failure_reason: FailureReason;
   diagnostics?: DiagnosticsSummary;
 }

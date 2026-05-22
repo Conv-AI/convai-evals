@@ -117,9 +117,12 @@ export class SdkBridge {
       // blendshape_provider defaults to "none" and no animation data is sent.
       enableLipsync: true,
       url: normalizeUrl(this.config.endpointUrl),
-      // Enables core-service to emit per-turn `turn-trace` RTVI messages with the full
-      // timeline + critical-stage attribution. Required for server-side e2e capture.
-      debug: true,
+      // debug=true  -> core-service emits per-turn `turn-trace` RTVI messages (server-side
+      //                stage latency over the SDK data channel; no BigQuery needed). 5000-row
+      //                BQ cap applies.
+      // debug=false -> only client-side metrics; server-side per-stage latency would need BQ.
+      // Defaults to false (client-side only) when the run config doesn't set it.
+      debug: this.config.debug ?? false,
     });
 
     // Wire the botReady listener BEFORE client.connect() so we don't miss the
@@ -234,7 +237,7 @@ export class SdkBridge {
 
   // -------- SDK calls --------
 
-  async waitForBotReady(timeoutMs = 45000): Promise<void> {
+  async waitForBotReady(timeoutMs = 90000): Promise<void> {
     if (this.botReadyFired) return;
     return new Promise((resolve, reject) => {
       const t = setTimeout(() => {

@@ -47,10 +47,15 @@ export async function runAllSessions(
   signal?: AbortSignal,
 ): Promise<void> {
   const pool = new WorkerPool(concurrency);
+  // Stagger session launches so N simultaneous LiveKit/WebRTC connects don't collide
+  // (a connect storm makes most sessions miss botReady). Env LAUNCH_STAGGER_MS (default 0).
+  const staggerMs = Number(process.env.LAUNCH_STAGGER_MS ?? "0");
   await Promise.all(
-    handles.map((h) =>
+    handles.map((h, idx) =>
       pool.runWith(async () => {
         if (signal?.aborted) return; // never launched
+        if (staggerMs > 0) await new Promise((r) => setTimeout(r, idx * staggerMs));
+        if (signal?.aborted) return;
         try {
           await h.launch();
           await h.waitForCompletion(perSessionTimeoutMs);

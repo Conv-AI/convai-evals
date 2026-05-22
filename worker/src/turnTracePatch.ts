@@ -28,9 +28,14 @@ export function installTurnTraceTap(client: any, onTrace: (t: TurnTrace) => void
     }
     if (!msg || typeof msg !== "object") return;
     const m = msg as { type?: string; data?: unknown };
-    // The server publishes the trace as a top-level RTVI envelope; the actual fields
-    // sit either at the root or under `data`. Accept both shapes.
-    if (m.type !== "turn-trace") return;
+    // Turn-trace is published as an RTVIServerMessageFrame, so it arrives as
+    // `{type:"server-message", data:{type:"turn-trace", ...}}` — NOT at the top level.
+    // Match either the top-level type or the inner server-message data.type.
+    const innerType =
+      m.type === "server-message" && m.data && typeof m.data === "object"
+        ? (m.data as { type?: string }).type
+        : undefined;
+    if (m.type !== "turn-trace" && innerType !== "turn-trace") return;
     const payloadObj = (m.data && typeof m.data === "object" ? m.data : m) as TurnTrace;
     onTrace(payloadObj);
   };
