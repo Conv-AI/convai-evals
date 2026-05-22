@@ -10,16 +10,15 @@
 // environment. Datasets are passed as file arguments and are never committed here.
 //
 // Usage:
-//   CHARACTER_ID=<id> API_KEY=<key> node scripts/run-batch.mjs data/*.csv
-//   CHARACTER_ID=<id> API_KEY=<key> ENDPOINT=preview STAGGER_MS=10000 \
+//   CHARACTER_ID=<id> API_KEY=<key> ENDPOINT_URL=<prod-url> node scripts/run-batch.mjs data/*.csv
+//   CHARACTER_ID=<id> API_KEY=<key> ENDPOINT_URL=<prod-url> STAGGER_MS=10000 \
 //     TTS_VOICE_ID=Samantha REPORT_DIR=./reports node scripts/run-batch.mjs a.csv b.csv
 //
 // Env:
-//   HARNESS_URL   server base URL            (default http://localhost:4000)
+//   HARNESS_URL   local server base URL      (default http://localhost:4000)
 //   CHARACTER_ID  Convai character id        (required)
 //   API_KEY       Convai API key             (required)
-//   ENDPOINT      prod | preview | staging   (default prod)
-//   ENDPOINT_URL  explicit override for the endpoint base URL
+//   ENDPOINT_URL  Convai prod endpoint URL   (required; provided by Convai)
 //   CONCURRENCY   sessions per run           (default: unique session_ids in the file)
 //   STAGGER_MS    delay between dataset launches (default 0)
 //   SPEED         scenario speed multiplier  (default 1)
@@ -33,17 +32,10 @@
 import { readFileSync, writeFileSync, readdirSync, mkdirSync, statSync } from "node:fs";
 import { join, basename, extname, resolve } from "node:path";
 
-const ENDPOINT_URLS = {
-  prod: "https://realtime-api.convai.com",
-  preview: "https://realtime-api-preview.convai.com",
-  staging: "https://realtime-api-stg.convai.com",
-};
-
 const HARNESS = process.env.HARNESS_URL || "http://localhost:4000";
 const CHARACTER_ID = process.env.CHARACTER_ID;
 const API_KEY = process.env.API_KEY;
-const ENDPOINT = (process.env.ENDPOINT || "prod").toLowerCase();
-const ENDPOINT_URL = process.env.ENDPOINT_URL || ENDPOINT_URLS[ENDPOINT];
+const ENDPOINT_URL = process.env.ENDPOINT_URL;
 const STAGGER_MS = Number(process.env.STAGGER_MS ?? "0");
 const SPEED = Number(process.env.SPEED ?? "1");
 const SLA_VOICE_MS = Number(process.env.SLA_VOICE_MS ?? "3000");
@@ -54,12 +46,8 @@ const DEBUG = /^true$/i.test(process.env.DEBUG ?? "");
 const JUDGE = /^true$/i.test(process.env.JUDGE ?? "");
 const REPORT_DIR = process.env.REPORT_DIR || "./reports";
 
-if (!CHARACTER_ID || !API_KEY) {
-  console.error("CHARACTER_ID and API_KEY env vars are required.");
-  process.exit(2);
-}
-if (!ENDPOINT_URL) {
-  console.error(`Unknown ENDPOINT '${ENDPOINT}' (expected prod|preview|staging) and no ENDPOINT_URL set.`);
+if (!CHARACTER_ID || !API_KEY || !ENDPOINT_URL) {
+  console.error("CHARACTER_ID, API_KEY, and ENDPOINT_URL env vars are required.");
   process.exit(2);
 }
 
@@ -133,7 +121,7 @@ function startRun(file) {
   const sessionIds = [...new Set(rows.map((r) => r.session_id))];
   const concurrency = Number(process.env.CONCURRENCY ?? sessionIds.length ?? 1) || 1;
   const config = {
-    endpoint: ENDPOINT, endpointUrl: ENDPOINT_URL,
+    endpoint: "prod", endpointUrl: ENDPOINT_URL,
     characterId: CHARACTER_ID, apiKey: API_KEY,
     sessionIds, concurrency, speedMultiplier: SPEED,
     slaVoiceAnimMs: SLA_VOICE_MS, slaTextOutMs: SLA_TEXT_MS,
@@ -184,7 +172,7 @@ function startRun(file) {
 
 async function main() {
   mkdirSync(REPORT_DIR, { recursive: true });
-  console.log(`convai-evals batch · ${ENDPOINT} (${ENDPOINT_URL}) · ${files.length} dataset(s) · stagger ${STAGGER_MS}ms · debug=${DEBUG} · tts ${TTS_PROVIDER}/${TTS_VOICE_ID}`);
+  console.log(`convai-evals batch · ${ENDPOINT_URL} · ${files.length} dataset(s) · stagger ${STAGGER_MS}ms · debug=${DEBUG} · tts ${TTS_PROVIDER}/${TTS_VOICE_ID}`);
   const totalStart = Date.now();
   const reportPromises = [];
   for (let i = 0; i < files.length; i++) {
@@ -198,7 +186,7 @@ async function main() {
   const results = await Promise.all(reportPromises);
   const totalMin = ((Date.now() - totalStart) / 1000 / 60).toFixed(1);
 
-  console.log(`\n${"=".repeat(72)}\nSUMMARY (${totalMin} min) · ${ENDPOINT}\n${"=".repeat(72)}`);
+  console.log(`\n${"=".repeat(72)}\nSUMMARY (${totalMin} min)\n${"=".repeat(72)}`);
   const aggregate = {};
   for (const r of results) {
     if (r.error) { console.log(`  ${r.filename.padEnd(48)} ERROR: ${r.error}`); continue; }
@@ -207,7 +195,7 @@ async function main() {
   }
   console.log("\nAggregate failure_reason counts:");
   for (const [k, v] of Object.entries(aggregate).sort((a, b) => b[1] - a[1])) console.log(`  ${k.padEnd(34)} ${v}`);
-  writeFileSync(join(REPORT_DIR, "batch-summary.json"), JSON.stringify({ endpoint: ENDPOINT, total_elapsed_min: parseFloat(totalMin), aggregate_failure_counts: aggregate, per_dataset: results }, null, 2));
+  writeFileSync(join(REPORT_DIR, "batch-summary.json"), JSON.stringify({ endpoint_url: ENDPOINT_URL, total_elapsed_min: parseFloat(totalMin), aggregate_failure_counts: aggregate, per_dataset: results }, null, 2));
   console.log(`\nsaved → ${join(REPORT_DIR, "batch-summary.json")}`);
 }
 main().catch((e) => { console.error("BATCH FAILED:", e); process.exit(1); });

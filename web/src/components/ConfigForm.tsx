@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import type { EndpointKey, RunConfig, TtsProvider } from "@convai/evals-shared";
-import { fetchEndpoints } from "../api/orchestrator.js";
+import type { RunConfig, TtsProvider } from "@convai/evals-shared";
 
 interface Props {
   sessionIds: string[];
@@ -10,12 +9,7 @@ interface Props {
 }
 
 export function ConfigForm({ sessionIds, defaultConcurrency, disabled, onStart }: Props): JSX.Element {
-  const [endpoint, setEndpoint] = useState<EndpointKey>("prod");
-  const [endpoints, setEndpoints] = useState<Record<EndpointKey, string>>({
-    prod: "",
-    preview: "",
-    staging: "",
-  });
+  const [endpointUrl, setEndpointUrl] = useState("");
   const [characterId, setCharacterId] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [selectedSessions, setSelectedSessions] = useState<string[]>(sessionIds);
@@ -32,18 +26,13 @@ export function ConfigForm({ sessionIds, defaultConcurrency, disabled, onStart }
   const [ttsEndpoint, setTtsEndpoint] = useState("");
 
   useEffect(() => {
-    fetchEndpoints().then(setEndpoints).catch(() => undefined);
-  }, []);
-
-  useEffect(() => {
     setSelectedSessions(sessionIds);
     setConcurrency(Math.min(defaultConcurrency, Math.max(1, sessionIds.length)));
   }, [sessionIds, defaultConcurrency]);
 
-  const endpointUrl = endpoints[endpoint] ?? "";
   const canStart =
     !disabled &&
-    endpointUrl.length > 0 &&
+    endpointUrl.trim().length > 0 &&
     characterId.length > 0 &&
     apiKey.length > 0 &&
     selectedSessions.length > 0;
@@ -53,19 +42,13 @@ export function ConfigForm({ sessionIds, defaultConcurrency, disabled, onStart }
       <h2>Run config</h2>
 
       <div className="form-section">
-        <h3>Convai endpoint</h3>
-        <label>Environment</label>
-        <select value={endpoint} onChange={(e) => setEndpoint(e.target.value as EndpointKey)}>
-          <option value="prod">Prod — {endpoints.prod || "(unset)"}</option>
-          <option value="preview">Preview — {endpoints.preview || "(unset)"}</option>
-          <option value="staging">Staging — {endpoints.staging || "(unset)"}</option>
-        </select>
-        {!endpointUrl && (
-          <p className="error-text small">
-            No URL configured for {endpoint}. Set CONVAI_ENDPOINT_{endpoint.toUpperCase()} in
-            server/.env
-          </p>
-        )}
+        <h3>Convai connection</h3>
+        <label>Prod endpoint URL</label>
+        <input
+          value={endpointUrl}
+          onChange={(e) => setEndpointUrl(e.target.value)}
+          placeholder="https://… (your Convai prod endpoint, provided by Convai)"
+        />
         <label>Character ID</label>
         <input value={characterId} onChange={(e) => setCharacterId(e.target.value)} />
         <label>Convai API key</label>
@@ -220,8 +203,8 @@ export function ConfigForm({ sessionIds, defaultConcurrency, disabled, onStart }
         style={{ marginTop: 16, width: "100%" }}
         onClick={() => {
           onStart({
-            endpoint,
-            endpointUrl,
+            endpoint: "prod",
+            endpointUrl: endpointUrl.trim(),
             characterId,
             apiKey,
             sessionIds: selectedSessions,

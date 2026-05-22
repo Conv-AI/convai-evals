@@ -1,11 +1,5 @@
 import type { ReportPayload, RunRequest, WsServerToClient } from "@convai/evals-shared";
 
-export async function fetchEndpoints(): Promise<{ prod: string; preview: string; staging: string }> {
-  const resp = await fetch("/api/endpoints");
-  if (!resp.ok) throw new Error("failed to load endpoints");
-  return resp.json();
-}
-
 export interface RunHandle {
   controlWs: WebSocket;
   donePromise: Promise<ReportPayload>;

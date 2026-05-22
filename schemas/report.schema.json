@@ -13,7 +13,7 @@
       "properties": {
         "run_id": { "type": "string" },
         "timestamp": { "type": "string" },
-        "endpoint": { "enum": ["prod", "preview", "staging"] },
+        "endpoint": { "enum": ["prod"] },
         "endpointUrl": { "type": "string" },
         "characterId": { "type": "string" },
         "row_count": { "type": "number" },

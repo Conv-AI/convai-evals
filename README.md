@@ -2,7 +2,7 @@
 
 Agentic evaluation toolkit for Convai Character AI infrastructure.
 
-`convai-evals` is a public, dataset-agnostic runner for testing Convai Character AI behavior through the same customer-facing Web SDK path used by real applications. You give it a dataset of inputs (text, voice, dynamic context) and your character, and it reports how the character behaved (responded vs. stayed silent, correctly or not) and how fast (latency). It works with **any** character and **any** dataset — nothing in here is specific to one customer.
+`convai-evals` is a dataset-agnostic runner for testing Convai Character AI behavior through the same Web SDK path real applications use. You give it a dataset of inputs (text, voice, dynamic context) and a character, and it reports how the character behaved (responded vs. stayed silent, correctly or not) and how fast (latency). It works with **any** character and **any** dataset.
 
 > **New here? Start with the [Getting started](#getting-started) guide below.** It walks you through running your first evaluation step by step, including exactly where to enter your Character ID, API key, and datasets. No prior experience required.
 
@@ -57,8 +57,8 @@ Then open the link it prints (it will be **http://localhost:5180**) in your brow
 - Click **"Upload CSV"** and pick a dataset file from wherever you saved it (e.g. your Downloads folder). *That's where any downloaded dataset goes — you select it here; there is no special folder to copy it into.*
 - Or click **"Load synthetic sample"** to try the tool with built-in fake data first.
 
-**b) Run config card** — this is where your credentials go:
-- **Environment** — choose `Prod` (or Preview/Staging if instructed).
+**b) Run config card** — this is where your connection details go:
+- **Prod endpoint URL** — paste your Convai prod endpoint URL here (provided by Convai).
 - **Character ID** — paste your Convai character ID here.
 - **Convai API key** — paste your Convai API key here (it shows as dots; it is only sent to the engine on your own machine).
 - **TTS for Voice In rows** — leave **Provider = Local** (free, no setup). Set **Voice ID** to a voice your computer has:
@@ -68,7 +68,7 @@ Then open the link it prints (it will be **http://localhost:5180**) in your brow
 
 Finally click the big **Run** button. Progress shows on screen; when it finishes you'll see pass-rates and latency, and you can **export the report as CSV or JSON**.
 
-> The Character ID and API key live **only in this form** (and the headless command below) — they are never written into the tool's code or saved to the repo.
+> Your endpoint URL, Character ID, and API key live **only in this form** (and the headless command below) — they are never written into the tool's code or saved to the repo.
 
 ### 4. Run many datasets at once (optional, for batches)
 
@@ -77,13 +77,13 @@ If you have several datasets and want to run them in one go (or run several at t
 ```bash
 CHARACTER_ID=your-character-id \
 API_KEY=your-api-key \
-ENDPOINT=prod \
+ENDPOINT_URL=your-convai-prod-url \
 TTS_VOICE_ID=Samantha \
 REPORT_DIR=./reports \
 node scripts/run-batch.mjs /path/to/your/datasets/
 ```
 
-- **Where your Character ID + API key go:** the `CHARACTER_ID=` and `API_KEY=` values in the command above. Replace the placeholder text with your real values.
+- **Where your endpoint URL, Character ID + API key go:** the `ENDPOINT_URL=`, `CHARACTER_ID=`, and `API_KEY=` values in the command above. Replace the placeholder text with your real values.
 - **Where your datasets go:** put the downloaded `.csv` files in any folder, then pass that folder's path as the last argument (or list individual files). Example: `node scripts/run-batch.mjs ~/Downloads/my-datasets/`.
 - On Mac use `TTS_VOICE_ID=Samantha`; on Linux use `TTS_VOICE_ID=en-us`.
 
@@ -97,7 +97,7 @@ Full options (concurrency, staggering, server-side latency, etc.) are in **[docs
 ### 6. Troubleshooting
 
 - **`command not found: node` / `npm`** — Node.js isn't installed. Install it from [nodejs.org](https://nodejs.org) and reopen the terminal.
-- **Sessions fail with "botReady timeout"** — usually the Character ID or API key is wrong, or the key doesn't match the selected Environment (a Prod key won't work on Preview, and vice-versa). Double-check all three.
+- **Sessions fail with "botReady timeout"** — usually the endpoint URL, Character ID, or API key is wrong, or they don't belong together. Double-check all three.
 - **Voice rows produce no audio / fail** — the **Voice ID** must be valid for your operating system (Mac: `Samantha`; Linux: `en-us`). Or switch the provider to Google with a key.
 - **"port already in use"** — another copy is already running. Close it, or start the engine on a different port with `PORT=4100 npm run dev:server`.
 - **No BigQuery needed** — behavior pass-rates and client-side latency are produced without any database access. (Server-side per-stage latency is optional; see the headless-runner doc.)
@@ -132,7 +132,7 @@ The canonical input is versioned JSON:
 }
 ```
 
-Supported v0 input kinds are `text`, `voice`, and `dynamic_context`. Domain-specific fields belong in opaque `metadata`; do not add customer-specific columns to the public schema. See [scenario.schema.json](schemas/scenario.schema.json) and [docs/scenario-format.md](docs/scenario-format.md). CSV datasets follow [docs/csv-adapter.md](docs/csv-adapter.md).
+Supported v0 input kinds are `text`, `voice`, and `dynamic_context`. Domain-specific fields belong in opaque `metadata`; keep organization-specific columns out of the schema. See [scenario.schema.json](schemas/scenario.schema.json) and [docs/scenario-format.md](docs/scenario-format.md). CSV datasets follow [docs/csv-adapter.md](docs/csv-adapter.md).
 
 Behavior expectations support legacy values `respond`, `abstain`, and `no_call`, plus precise values `respond_with_audio`, `respond_silent`, and `interrupted_by_priority_event`. Legacy `abstain` passes when the server reaches silence through either a silent LLM result or a clean no-call path.
 
@@ -159,7 +159,7 @@ This repo does not use a Web SDK submodule. The worker imports `@convai/web-sdk`
 - `updateContext(...)`
 - SDK event listeners such as transcripts, bot output, speaking state, blendshapes, and metrics
 
-The optional `current_attention_object` field is included in the schema but is safe to omit. Use a public SDK version that supports it before making it required in scenarios.
+The optional `current_attention_object` field is included in the schema but is safe to omit. Use an SDK version that supports it before making it required in scenarios.
 
 ### Diagnostics
 
@@ -169,7 +169,7 @@ Diagnostics are disabled by default:
 DIAG_PROVIDER=none
 ```
 
-Public v0 supports optional analytics API lookups:
+Optionally, analytics API lookups are supported:
 
 ```bash
 DIAG_PROVIDER=analytics-api
@@ -177,25 +177,22 @@ CONVAI_API_KEY=...
 CONVAI_ANALYTICS_BASE_URL=https://analytics-api.convai.com/v1/analytics
 ```
 
-Reports preserve backend IDs when available so a coding agent can call Convai analytics APIs after a run. Direct cloud log access is intentionally outside the public default path.
+Reports preserve backend IDs when available so a follow-up agent can call Convai analytics APIs after a run. Direct cloud log access is intentionally outside the default path.
 
-Each row also carries a `correlation` block with a deterministic `client_event_id`, dispatch timestamps, and the attribution method used for response and transcript capture. Text and dynamic-context rows attempt to pass the same public-safe metadata through the SDK data message so backend telemetry can join back to eval rows when supported.
+Each row also carries a `correlation` block with a deterministic `client_event_id`, dispatch timestamps, and the attribution method used for response and transcript capture. Text and dynamic-context rows pass this metadata through the SDK data message so backend telemetry can join back to eval rows when supported.
 
-### Endpoint configuration
+### Endpoint
 
-The server reads endpoint URLs from environment variables (defaults shown):
+Runs target the Convai **prod** endpoint. The URL is not bundled with the tool — you
+provide it at runtime: paste it into the **Prod endpoint URL** field in the web app, or
+set `ENDPOINT_URL` for the headless runner.
 
-```bash
-CONVAI_ENDPOINT_PROD=https://realtime-api.convai.com
-CONVAI_ENDPOINT_PREVIEW=https://realtime-api-preview.convai.com
-CONVAI_ENDPOINT_STAGING=https://realtime-api-stg.convai.com
-```
+### Data & credentials
 
-Copy `.env.example` to `server/.env` if you need to override them.
-
-### Public safety
-
-The initial public history is meant to be a sanitized first commit: no source history from the precursor repo, no customer datasets, no customer-specific naming, no cloud diagnostics defaults, and no credentials. Synthetic examples preserve workload shapes without customer content.
+This repo stores no credentials and no datasets. You supply your endpoint URL, character
+ID, API key, and dataset files at runtime (in the web form or via environment variables);
+none of them are written to disk in the repo. Cloud diagnostics are off by default. The
+bundled examples are synthetic and exist only to exercise the pipeline.
 
 ## License
 

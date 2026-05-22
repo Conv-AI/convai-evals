@@ -23,7 +23,7 @@ export type FailureReason =
   | "connection_error";
 export type ContextMode = "append" | "replace" | "reset";
 export type RunLlm = "true" | "false" | "auto";
-export type EndpointKey = "prod" | "preview" | "staging";
+export type EndpointKey = "prod";
 export type TtsProvider = "local" | "google";
 
 export function isFailureReasonFailure(reason: FailureReason): boolean {

@@ -30,7 +30,7 @@ In another terminal, point the runner at your datasets:
 ```bash
 CHARACTER_ID=<your-character-id> \
 API_KEY=<your-api-key> \
-ENDPOINT=prod \
+ENDPOINT_URL=<your-convai-prod-url> \
 TTS_VOICE_ID=Samantha \
 REPORT_DIR=./reports \
 node scripts/run-batch.mjs path/to/dataset_01.csv path/to/dataset_02.csv
@@ -39,7 +39,7 @@ node scripts/run-batch.mjs path/to/dataset_01.csv path/to/dataset_02.csv
 To reproduce a 10-concurrent staggered run (each dataset is one session):
 
 ```bash
-CHARACTER_ID=<id> API_KEY=<key> ENDPOINT=prod STAGGER_MS=10000 \
+CHARACTER_ID=<id> API_KEY=<key> ENDPOINT_URL=<your-convai-prod-url> STAGGER_MS=10000 \
   node scripts/run-batch.mjs path/to/datasets/
 ```
 
@@ -53,8 +53,7 @@ with per-dataset pass-rates and aggregate failure counts.
 | `HARNESS_URL` | `http://localhost:4000` | server base URL |
 | `CHARACTER_ID` | — | **required** |
 | `API_KEY` | — | **required** |
-| `ENDPOINT` | `prod` | `prod` \| `preview` \| `staging` |
-| `ENDPOINT_URL` | (from `ENDPOINT`) | explicit override |
+| `ENDPOINT_URL` | — | **required** — your Convai prod endpoint URL |
 | `CONCURRENCY` | unique sessions in file | sessions launched per run |
 | `STAGGER_MS` | `0` | delay between dataset launches |
 | `SPEED` | `1` | scenario speed multiplier |

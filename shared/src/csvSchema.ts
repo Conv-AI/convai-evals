@@ -142,7 +142,7 @@ export const OPTIONAL_COLUMNS: readonly CsvColumnSpec[] = [
     name: "metadata_json",
     required: false,
     type: "json",
-    description: "Opaque scenario metadata. Customer-specific columns should be converted into this object before publication.",
+    description: "Opaque scenario metadata. Organization-specific columns should be mapped into this object.",
     example: '{"persona":"returning-user","surface":"mobile"}',
   },
 ];

@@ -245,7 +245,7 @@ function applyEventToObservation(obs: RowObservation, ev: CapturedEvent): void {
       break;
     case "botOutput":
       obs.timestamps.t_first_bot_output ??= ev.ts;
-      // The public SDK 1.3.x does not emit botRespondingChange; any of botOutput,
+      // @convai/web-sdk 1.3.x does not emit botRespondingChange; any of botOutput,
       // botTtsStarted, or speakingChange:true is unambiguous evidence that the
       // server invoked the LLM for this turn.
       obs.llm_called = true;
