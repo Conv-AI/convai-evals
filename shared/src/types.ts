@@ -69,6 +69,10 @@ export interface RunConfig {
   judgeEnabled: boolean;
   judgeEveryNth: number;
   judgeApiKey?: string; // optional override for the judge provider API key env var
+  // When true, core-service emits per-turn `turn-trace` RTVI messages (server-side stage
+  // latency over the SDK data channel — no BigQuery needed). When false/omitted, only
+  // client-side metrics are captured and server-side per-stage latency would require BQ.
+  debug?: boolean;
   ttsProvider: TtsProvider;
   ttsVoiceId: string;
   ttsApiKey?: string; // optional override for the provider's API key env var

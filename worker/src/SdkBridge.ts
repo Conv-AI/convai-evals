@@ -117,9 +117,12 @@ export class SdkBridge {
       // blendshape_provider defaults to "none" and no animation data is sent.
       enableLipsync: true,
       url: normalizeUrl(this.config.endpointUrl),
-      // debug=false: no per-turn turn-trace RTVI messages and no 5000-row/session BQ cap.
-      // Per-turn latency lands in BigQuery (core_service_first_response_segments) instead.
-      debug: false,
+      // debug=true  -> core-service emits per-turn `turn-trace` RTVI messages (server-side
+      //                stage latency over the SDK data channel; no BigQuery needed). 5000-row
+      //                BQ cap applies.
+      // debug=false -> only client-side metrics; server-side per-stage latency would need BQ.
+      // Defaults to false (client-side only) when the run config doesn't set it.
+      debug: this.config.debug ?? false,
     });
 
     // Wire the botReady listener BEFORE client.connect() so we don't miss the

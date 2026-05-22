@@ -34,6 +34,16 @@ npm run dev:web
 
 Then open the Vite URL, load the synthetic sample or upload a CSV adapter file, enter a safe non-customer character ID plus API key, and run the eval. The web dev server is pinned to port 5180 with strict-port mode so it fails loudly instead of silently moving to another app's port. Reports are JSON-first and can be exported as CSV from the UI.
 
+### Headless runs
+
+To run datasets without the browser UI (CI, batch, concurrency), use the env-driven
+runner — see [docs/headless-runner.md](docs/headless-runner.md):
+
+```bash
+npm run dev:server
+CHARACTER_ID=<id> API_KEY=<key> ENDPOINT=prod node scripts/run-batch.mjs path/to/datasets/
+```
+
 ## Scenario Format
 
 The canonical input is versioned JSON:
