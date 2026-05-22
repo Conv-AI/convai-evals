@@ -23,5 +23,3 @@ To extract the IDs and dispatch time window for an external telemetry lookup:
 ```bash
 convai-evals telemetry-ids report.json --out telemetry-ids.json
 ```
-
-Direct cloud log access is not part of the default path.

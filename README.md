@@ -165,7 +165,7 @@ CONVAI_API_KEY=...
 CONVAI_ANALYTICS_BASE_URL=https://analytics-api.convai.com/v1/analytics
 ```
 
-Reports preserve backend IDs when available so a follow-up agent can call Convai analytics APIs after a run. Direct cloud log access is intentionally outside the default path.
+Reports preserve backend IDs when available so a follow-up agent can call Convai analytics APIs after a run.
 
 Each row also carries a `correlation` block with a deterministic `client_event_id`, dispatch timestamps, and the attribution method used for response and transcript capture. Text and dynamic-context rows pass this metadata through the SDK data message so backend telemetry can join back to eval rows when supported.
 
