@@ -149,17 +149,6 @@ convai-evals explain scenario.json
 convai-evals generate-template --kind voice-text-mix --out scenario.json
 ```
 
-### Web SDK dependency
-
-This repo does not use a Web SDK submodule. The worker imports `@convai/web-sdk` from npm and exercises:
-
-- `ConvaiClient.connect(...)`
-- `sendUserTextMessage(...)`
-- `updateContext(...)`
-- SDK event listeners such as transcripts, bot output, speaking state, blendshapes, and metrics
-
-The optional `current_attention_object` field is included in the schema but is safe to omit. Use an SDK version that supports it before making it required in scenarios.
-
 ### Diagnostics
 
 Diagnostics are disabled by default:
